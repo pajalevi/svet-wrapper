@@ -5,406 +5,390 @@ This function generates the inputs for a run that combines
 constraints from multiple runs according to the given inputs.
 It then runs StorageVET.
 
-Zhenhua Zhang Jan 13 2021
+Zhenhua Zhang Jan 16 2021
 """
 
 import pandas as pd
-from wrapper_zhenhua.vc_wrap import SVetObject
-import os
-import vc_wrap as vc
+import numpy as np
+import copy
 
-SVet_Path = "/Applications/storagevet2v101/StorageVET-master-git/"
-default_params_file = "Model_Parameters_2v1-0-2_default.csv"
-runs_log_file = "Results/runsLog.csv"
-
-# reg_scenario == 1, create reservations based on res_hours
-# reg_scenario == 2, TODO
-# reg_scenario == 3, create reservations based on previous dispatch
-
-
-def combineRuns(runIDs, resTypes, resHours, regScenario,
-SVet_Path = SVet_Path, default_params_file = default_params_file, runs_log_file = runs_log_file, test = False):
-  """This function takes as input the type of regulatory scenario desired and three
+# TODO
+def combine_runs(SVet_absolute_path, multiple_runID, app_types, app_hours, regulation_scenario):
+    """This function takes as input the type of regulatory scenario desired and three
   pieces of information regarding each run used to make the combined run: the run number,
   the resource type {“NSR”,”SR”,”RA1”,”RA0”,”DR1”,”DR0”…} and the hours in which a resource
   is given priority (e.g. [[6,16], [16,23]]), which may not overlap. It uses this information
   to run StorageVET with the desired combination of storage value stacking"""
 
-  # check that runIDs, resTypes, and resHours are the same length
+    # check that multiple_runID, app_types, and app_hours are the same length
+    if all(len(lst) == len(multiple_runID) for lst in [app_types, app_hours]):
+        pass
+    else:
+        raise ValueError("wrong input list length for combine_runs")
 
-  # check for overlap in resHours & that each element has length 2
+    # check for overlap in app_hours & that each element has length 2
 
-  # create empty matrix of user constraints
-  # create placeholder for value
+    # create empty matrix of user constraints
 
-  # for each resource...
-  for i in range(len(runIDs)):
+    # create placeholder for value
 
-    # ID folder:
-    # read in runs log file
-    runsLog = pd.read_csv(SVet_Path + runs_log_file)
-    runsfilter = runsLog['runID']==runIDs[i]
-    shortname = runsLog.loc[runsLog['runID'] == runIDs[i]]['shortname'].values[0]
-    # id row with runID
-    # id shortname
+    # for each resource...
+    for i in range(len(multiple_runID)):
+        pass
+        # ID folder:
+        # read in runs log file
+        # runsLog = pd.read_csv(SVet_Path + runs_log_file)
+        # runsfilter = runsLog['runID'] == runIDs[i]
+        # shortname = runsLog.loc[runsLog['runID'] == runIDs[i]]['shortname'].values[0]
+        # # id row with runID
+        # # id shortname
+        #
+        # # call appropriate read-in fn for that resource
+        # resultsPath = SVet_Path + "Results/output_run" + str(
+        #     runIDs[i]) + "_" + shortname + "/"  # "timeseries_results_runID" + str(runIDs[i]) + ".csv"
+        #
+        # resType_to_fn(resTypes[i], resultsPath, resHours[i], regScenario)
 
-    # call appropriate read-in fn for that resource
-    resultsPath = SVet_Path + "Results/output_run" + str(runIDs[i]) + "_" + shortname + "/"#"timeseries_results_runID" + str(runIDs[i]) + ".csv"
+        # add outputs to user constraint matrix
+        # select for most binding user constraints
+        # add value to value placeholder
 
-    resType_to_fn(resTypes[i],resultsPath,resHours[i], regScenario)
+    # write new hourly_timseries input file
 
-    # add outputs to user constraint matrix
-    # select for most binding user constraints
-    # add value to value placeholder
+    # git commit if NOT test
 
-  # write new hourly_timseries input file
+    # run svet via vc_wrap
 
-  # git commit if NOT test
-
-  # run svet via vc_wrap
-
-
-# function resource does the following
-# read in timeseries of dispatch
-# identify appropriate columns
-# subset for desired hours
-# translate output to appropriate limits
-# also calculate value of that service
-
-def resType_to_fn(resType,resultsPath,resHour,regScenario):
-  switch_case = {
-    "NSR": nsrFn,
-    "SR": srFn
-  }
-  func = switch_case.get(resType) #get returns the value of the item associated with key
-  func(resultsPath,resHour,regScenario) #TODO: define inputs
-#end resType_to_fn
+    return None
 
 
-runID = 133
-regScenario = 1
-resHour = [14,20]
-resultsPath = SVet_Path + "Results/output_run" + str(runID) + "_NSR_only/"#"timeseries_results_runID" + str(runID) + ".csv"
-def nsrFn(resultsPath, runID, resHour, regScenario):
-  """create user constraints for nsr within window defined by resHour
-  according to the logic of the regScenario """
-  print("nsrFn called")
+class ConstraintObject:
+    def __init__(self, SvetObject, app_hours, regulation_scenario):
+        previous_params = SvetObject.new_params
+        self.previous_runID = SvetObject.runID
+        self.previous_svrun_params = SvetObject.params
 
-  # load parameter file for run
-  params = pd.read_csv(resultsPath + "params_run" + str(runID) + ".csv")
-  battpwr = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ch_max_rated'),'Value'].values[0])
-  battpwrd = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'dis_max_rated'),'Value'].values[0])
-  battcapmax = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ene_max_rated'),'Value'].values[0])
-  maxsoc = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ulsoc'),'Value'].values[0])
-  minsoc = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'llsoc'),'Value'].values[0])
-  battcap = battcapmax * (maxsoc / 100)
-  rte = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'rte'),'Value'].values[0])/100
+        self.previous_initial_hourly_timeseries = SvetObject.initial_hourly_timeseries
+        self.runID_result_folder_path = SvetObject.runID_result_folder_path
 
-  # nsr creates energy constraints, so we return only those
-  # start by pre-filling output with dummy constraints that dont do anything - just replicate batt params
-  output = pd.DataFrame(index = pd.date_range(start="1/1/2019",periods=8760,freq="h"), columns = ["chgMin_kW","chgMax_kW","eMin_kWh","eMax_kWh"])
-  output.loc[:,"eMin_kWh"] = battcap * (minsoc/100)
-  output.loc[:,"eMax_kWh"] = battcap * (maxsoc/100)
-  output.loc[:,"chgMin_kW"] = battpwr * -1
-  output.loc[:,"chgMax_kW"] = battpwr
+        # Load constraint parameters
+        self.app_hours = app_hours
+        self.regulation_scenario = regulation_scenario
 
-  # load timeseries - has prices, results
-  timeseries = pd.read_csv(resultsPath + "timeseries_results_runID" + str(runID) + ".csv"  )
-  timeseries["date"] = pd.to_datetime(timeseries['Start Datetime (hb)'])
-  timeseries = timeseries.set_index('date')
+        # Load general parameters from previous runID results
+        self.battery_charging_power_max = float(previous_params.loc[(previous_params['Tag'] == 'Battery') &
+                                                                    (previous_params['Key'] == 'ch_max_rated'),
+                                                                    'Value'].values[0])
+        self.battery_discharging_power_max = float(previous_params.loc[(previous_params['Tag'] == 'Battery') &
+                                                                       (previous_params['Key'] == 'dis_max_rated'),
+                                                                       'Value'].values[0])
+        self.battery_energy_rated = float(previous_params.loc[(previous_params['Tag'] == 'Battery') &
+                                                              (previous_params['Key'] == 'ene_max_rated'),
+                                                              'Value'].values[0])
+        self.max_soc = float(previous_params.loc[(previous_params['Tag'] == 'Battery') &
+                                                 (previous_params['Key'] == 'ulsoc'), 'Value'].values[0]) / 100
+        self.min_soc = float(previous_params.loc[(previous_params['Tag'] == 'Battery') &
+                                                 (previous_params['Key'] == 'llsoc'), 'Value'].values[0]) / 100
+        self.round_trip_efficiency = float(previous_params.loc[(previous_params['Tag'] == 'Battery') &
+                                                               (previous_params['Key'] == 'rte'),
+                                                               'Value'].values[0]) / 100
 
-  if regScenario == 1:
-    ## create reservations based on resHours
-    ### ID duration of NSR commitment & batt storage size -> calculate energy reservation requirement
-    # chgMin is so that batt can reduce charging to provide NSR - since it's not possible to simulate the battery
-    # charging at a set amount each hour for a large number of hours (as it would get full) we will just model
-    # the reservation of SOC for NSR via discharging
-    #TODO: account for different ch/disch, and CHARGING EFFICIENCY
-    # dur = float(params.loc[(params['Tag'] == 'NSR') & (params['Key'] == 'duration'),'Value'].values[0])
-    # if dur >1:
-    #   nrgres = battpwr #here we convert from power (kW) to energy (kWh)
-    # else:
-    #   nrgres = battpwr * (1/dur)
-    # ## insert into output during approppriate times
-    # output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMin_kWh'] = nrgres + (battcapmax * minsoc/100)
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMin_kWh'] = (battcapmax * (minsoc / 100)) + battpwr#nrgres + (battcapmax * minsoc/100)
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMax_kWh'] = battcap - rte*battpwr
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMin_kW'] = -1
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMax_kW'] = 1
+        # Load FR scenario parameters
+        self.FR_combine_markets = bool(previous_params.loc[(previous_params['Tag'] == 'FR') &
+                                                           (previous_params['Key'] == 'CombinedMarket'),
+                                                           'Value'].values[0])
 
-    # calculate value - multiply NSR price signal by battpwr for every active hour
-    valueseries = timeseries.loc[:,"NSR Price Signal ($/kW)"] * battpwr
-    ll = (timeseries.index.hour >= resHour[0]) & (timeseries.index.hour <= resHour[1])
-    value = sum(valueseries[ll])
+        # Load RA scenario parameters
+        self.RA_length = float(previous_params.loc[(previous_params['Tag'] == 'RA') &
+                                                   (previous_params['Key'] == 'length'), 'Value'].values[0])
 
-  elif regScenario == 2:
-    raise ValueError("regScenario 2 has not been coded yet")
-  elif regScenario == 3:
-    #create reservations based on previous dispatch
-    # colnames = ['Non-spinning Reserve (Charging) (kW)','Non-spinning Reserve (Discharging) (kW)']
-    # minres = timeseries['Non-spinning Reserve (Discharging) (kW)'] + (battcapmax * minsoc/100)
-    # chgres = timeseries['Non-spinning Reserve (Charging) (kW)']
-    # output.loc[:,'eMin_kWh'] = minres
-    # output.loc[:,'chgMin_kW'] = chgres
-    
-    #avoid infeasibility: pwrmin and pwrmax must not be equal. (same for energy)
-    sel = (timeseries['Non-spinning Reserve (Discharging) (kW)'] + timeseries['Non-spinning Reserve (Charging) (kW)']) >= battpwr*2
-    timeseries.loc[sel,'Non-spinning Reserve (Discharging) (kW)'] = timeseries.loc[sel,'Non-spinning Reserve (Discharging) (kW)'] -1
-      
-    chgmin = -1*(battpwrd - timeseries['Non-spinning Reserve (Discharging) (kW)'])
-    chgmax = battpwr - timeseries['Non-spinning Reserve (Charging) (kW)']
-    nrgmin = (battcapmax * (minsoc / 100)) + timeseries['Non-spinning Reserve (Discharging) (kW)']
-    nrgmax = battcap - rte*timeseries['Non-spinning Reserve (Charging) (kW)']
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMin_kW'] = chgmin.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMax_kW'] = chgmax.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMin_kWh'] = nrgmin.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMax_kWh'] = nrgmax.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
+        # Load previous dispatched results from the runID folder
+        previous_outputs = pd.read_csv(SvetObject.runID_dispatch_timeseries_path)
+        previous_outputs['datetime'] = pd.to_datetime(previous_outputs.iloc[:, 0])
+        previous_outputs_datetime = previous_outputs['datetime']
+        previous_outputs.set_index('datetime')
+        self.previous_outputs = previous_outputs
 
-    valueseries = timeseries.loc[:,"NSR Price Signal ($/kW)"] * (timeseries['Non-spinning Reserve (Discharging) (kW)'] + timeseries['Non-spinning Reserve (Charging) (kW)'])
-    ll = (timeseries.index.hour >= resHour[0]) & (timeseries.index.hour <= resHour[1])
-    value = sum(valueseries[ll])
-  else:
-    raise ValueError("regScenario must be 1, 2 or 3")
+        # Initialize a constraint object
+        output = pd.DataFrame(index=previous_outputs_datetime,
+                              columns=["chgMin_kW", "chgMax_kW", "eMin_kWh", "eMax_kWh"])
+        output.loc[:, "eMin_kWh"] = self.battery_energy_rated * self.min_soc
+        output.loc[:, "eMax_kWh"] = self.battery_energy_rated * self.max_soc  # TODO: double counted max_soc previously
+        output.loc[:, "chgMin_kW"] = - self.battery_charging_power_max  # TODO: why?
+        output.loc[:, "chgMax_kW"] = self.battery_charging_power_max  # TODO: why?
+        self.output = output
 
-  return(output, value)
-#end nsrFn
+        # Determine indexes
+        self.window_start_index = output.index.hour == app_hours[0]
+        self.window_index = (output.index.hour >= app_hours[0]) & (output.index.hour <= app_hours[1])
+        self.window_end_index = output.index.hour == app_hours[1]
 
-# # runID = 107
-runID = 132
-# runID = 109
-# regScenario = 1
-# resHour = [14,20]
-# # resultsPath = SVet_Path + "Results/output_run" + str(runID) + "_4h_SR/"#"timeseries_results_runID" + str(runID) + ".csv"
-resultsPath = SVet_Path + "Results/output_run" + str(runID) + "_SR_only/"#"timeseries_results_runID" + str(runID) + ".csv"
-# resultsPath = SVet_Path + "Results/output_run" + str(runID) + "_0.5h_SR/"#"timeseries_results_runID" + str(runID) + ".csv"
-def srFn(resultsPath, runID, resHour, regScenario):
-  """create user constraints for sr within window defined by resHour
-  according to the logic of the regScenario """
-  print("srFn called")
+    def set_NSR_user_constraints(self):
+        # Create user constraints based on resource hours and regulation scenario
+        NSR_contraint_output = self.output.copy(deep=True).reset_index(drop=True)
 
-  # load parameter file for run
-  params = pd.read_csv(resultsPath + "params_run" + str(runID) + ".csv")
-  battpwr = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ch_max_rated'),'Value'].values[0])
-  battpwrd = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'dis_max_rated'),'Value'].values[0])
-  battcapmax = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ene_max_rated'),'Value'].values[0])
-  maxsoc = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ulsoc'),'Value'].values[0])
-  minsoc = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'llsoc'),'Value'].values[0])
-  battcap = battcapmax * (maxsoc / 100)
-  rte = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'rte'),'Value'].values[0])/100
+        if self.regulation_scenario == 1:  # ENERGY reservations based on resource hours & service prices
+            # TODO: account for different ch/disch, and CHARGING EFFICIENCY
+            NSR_contraint_output.loc[self.window_index, "chgMin_kW"] = - 1
+            NSR_contraint_output.loc[self.window_index, "chgMax_kW"] = 1
+            NSR_contraint_output.loc[self.window_index, "eMin_kWh"] = \
+                self.battery_energy_rated * self.min_soc + self.battery_charging_power_max  # TODO: why not +discharge?
+            NSR_contraint_output.loc[self.window_index, "eMax_kWh"] = \
+                self.battery_energy_rated * self.max_soc - self.battery_charging_power_max * self.round_trip_efficiency  # TODO: why -?
 
-  # sr creates energy constraints, so we return only those
-  # start by pre-filling output with dummy constraints that dont do anything - just replicate batt params
-  output = pd.DataFrame(index = pd.date_range(start="1/1/2019",periods=8760,freq="h"), columns = ["chgMin_kW","chgMax_kW","eMin_kWh","eMax_kWh"])
-  output.loc[:,"eMin_kWh"] = battcap * (minsoc/100)
-  output.loc[:,"eMax_kWh"] = battcap * (maxsoc/100)
-  output.loc[:,"chgMin_kW"] = battpwr * -1
-  output.loc[:,"chgMax_kW"] = battpwr
+            # Calculate NSR values
+            previous_outputs_values = self.previous_outputs["NSR Price Signal ($/kW)"] * self.battery_charging_power_max
+            NSR_values = sum(previous_outputs_values[self.window_index])
 
-  # load timeseries - has prices, results
-  timeseries = pd.read_csv(resultsPath + "timeseries_results_runID" + str(runID) + ".csv"  )
-  timeseries["date"] = pd.to_datetime(timeseries['Start Datetime (hb)'])
-  timeseries = timeseries.set_index('date')
+        elif self.regulation_scenario == 2:  # ONE-SIDED reservations based on resource hours
+            raise ValueError("regulation_scenario 2 doesn't exist yet for NSR")
+        elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
+            # Avoid infeasibility TODO: understand this
+            prebvious_outputs_copy = self.previous_outputs.copy(deep=True)
+            sel = (prebvious_outputs_copy['Non-spinning Reserve (Discharging) (kW)'] +
+                   prebvious_outputs_copy[
+                       'Non-spinning Reserve (Charging) (kW)']) >= self.battery_charging_power_max * 2
+            prebvious_outputs_copy.loc[sel, 'Non-spinning Reserve (Discharging) (kW)'] = \
+                prebvious_outputs_copy.loc[sel, 'Non-spinning Reserve (Discharging) (kW)'] - 1
 
-  if regScenario == 1:
-    ## create reservations based on resHours
-    ### ID duration of sr commitment & batt storage size -> calculate energy reservation requirement
-    #assumes ch and disch are equal
-    #TODO: account for different ch/disch, and CHARGING EFFICIENCY
-    # dur = float(params.loc[(params['Tag'] == 'SR') & (params['Key'] == 'duration'),'Value'].values[0])
-    # if dur <= battcapmax/ch_max_rated:# >1: # assumes that ch and disch are equal!
-      # nrgres = battpwr #here we convert from power (kW) to energy (kWh)
-    # else:
-      # nrgres = battpwr * (1/dur)
-    ## insert into output during approppriate times
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMin_kWh'] = (battcapmax * (minsoc / 100)) + battpwr#nrgres + (battcapmax * minsoc/100)
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMax_kWh'] = battcap - rte*battpwr
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMin_kW'] = -1
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMax_kW'] = 1
+            charging_min = - 1 * (self.battery_discharging_power_max -
+                                  prebvious_outputs_copy['Non-spinning Reserve (Discharging) (kW)'])
+            charging_max = self.battery_charging_power_max - \
+                           prebvious_outputs_copy['Non-spinning Reserve (Charging) (kW)']
+            energy_min = self.battery_energy_rated * self.min_soc + \
+                         prebvious_outputs_copy['Non-spinning Reserve (Discharging) (kW)']
+            energy_max = self.battery_energy_rated * self.max_soc - \
+                         prebvious_outputs_copy['Non-spinning Reserve (Charging) (kW)'] * self.round_trip_efficiency
 
-    # calculate value - multiply SR price signal by battpwr for every active hour
-    # TODO: does this account for both up and down regulation?
-    valueseries = timeseries.loc[:,"SR Price Signal ($/kW)"] * battpwr
-    ll = (timeseries.index.hour >= resHour[0]) & (timeseries.index.hour <= resHour[1])
-    value = sum(valueseries[ll])
+            # Update constraints in the output
+            NSR_contraint_output.loc[self.window_index, "chgMin_kW"] = charging_min.loc[self.window_index]
+            NSR_contraint_output.loc[self.window_index, "chgMax_kW"] = charging_max.loc[self.window_index]
+            NSR_contraint_output.loc[self.window_index, "eMin_kWh"] = energy_min.loc[self.window_index]
+            NSR_contraint_output.loc[self.window_index, "eMax_kWh"] = energy_max.loc[self.window_index]
 
-  elif regScenario == 2:
-    raise ValueError("regScenario 2 has not been coded yet")
-  elif regScenario == 3:
-    #create reservations based on previous dispatch
-    # colnames = ['Non-spinning Reserve (Charging) (kW)','Non-spinning Reserve (Discharging) (kW)']
-    # min res = timeseries['Spinning Reserve (Discharging) (kW)'] + (battcapmax * minsoc/100)
-    # chgres = timeseries['Spinning Reserve (Charging) (kW)']
-    #avoid infeasibility
-    sel = (timeseries['Spinning Reserve (Discharging) (kW)'] + timeseries['Spinning Reserve (Charging) (kW)']) >= battpwr*2
-    timeseries.loc[sel,'Spinning Reserve (Discharging) (kW)'] = timeseries.loc[sel,'Spinning Reserve (Discharging) (kW)'] -1
+            # Calculate NSR values
+            previous_outputs_values = prebvious_outputs_copy["NSR Price Signal ($/kW)"] * \
+                                      (prebvious_outputs_copy['Non-spinning Reserve (Discharging) (kW)'] +
+                                       prebvious_outputs_copy['Non-spinning Reserve (Charging) (kW)'])
+            NSR_values = sum(previous_outputs_values[self.window_index])
 
-    chgmin = -1*(battpwrd - timeseries['Spinning Reserve (Discharging) (kW)'])
-    chgmax = battpwr - timeseries['Spinning Reserve (Charging) (kW)']
-    pwrmin = (battcapmax * (minsoc / 100)) + timeseries['Spinning Reserve (Discharging) (kW)']
-    pwrmax = battcap - rte*timeseries['Spinning Reserve (Charging) (kW)']
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMin_kW'] = chgmin.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMax_kW'] = chgmax.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMin_kWh'] = pwrmin.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMax_kWh'] = pwrmax.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
+        else:
+            raise ValueError("regulation_scenario must be 1, 2 or 3")
 
-    valueseries = timeseries.loc[:,"SR Price Signal ($/kW)"] * (timeseries['Spinning Reserve (Discharging) (kW)'] + timeseries['Spinning Reserve (Charging) (kW)'])
-    # this won't match the objective_values.csv values because those do not take into account model predictive control for SR in which last chunk of run is discarded
-    ll = (timeseries.index.hour >= resHour[0]) & (timeseries.index.hour <= resHour[1])
-    value = sum(valueseries[ll])
-  else:
-    raise ValueError("regScenario must be 1, 2 or 3")
+        # Create a new hourly timeseries dataframe as the Scenario time series file for a new SV run
+        new_hourly_timeseries = self.previous_initial_hourly_timeseries.copy(deep=True)
+        new_hourly_timeseries['Power Min (kW)'] = np.array(NSR_contraint_output['chgMin_kW'])
+        new_hourly_timeseries['Power Max (kW)'] = np.array(NSR_contraint_output['chgMax_kW'])
+        new_hourly_timeseries['Energy Max (kWh)'] = np.array(NSR_contraint_output['eMax_kWh'])
+        new_hourly_timeseries['Energy Min (kWh)'] = np.array(NSR_contraint_output['eMin_kWh'])
 
-  return(output, value)
-#end srFn
+        new_shortname = "runID{}_constraintNSR_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
+                                                                    self.app_hours[0], self.app_hours[1])
+        old_svrun_params = self.previous_svrun_params
+        new_svrun_params = copy.deepcopy(old_svrun_params)
+        new_svrun_params['NSR_active'] = "no"
+        for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
+                  'Results_label', 'Results_errors_log_path']:
+            new_svrun_params.pop(k, None)
+        new_hourly_timeseries_path = self.runID_result_folder_path + \
+                                     "/_new_hourly_timeseries_{}.csv".format(new_shortname)
+        new_hourly_timeseries.to_csv(new_hourly_timeseries_path, index=False)
 
-runID = 154
-regScenario = 3
-resHour = [14,20]
-resultsPath = SVet_Path + "Results/output_run" + str(runID) + "_FR_only2019/"
-def frFn(resultsPath, runID, resHour, regScenario):
-  """create user constraints for frequency regulation within window defined by resHour
-  according to the logic of the regScenario """
-  print("frFn called")
+        return old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, NSR_values
 
-  # load parameter file for run
-  params = pd.read_csv(resultsPath + "params_run" + str(runID) + ".csv")
-  battpwr = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ch_max_rated'),'Value'].values[0])
-  battpwrd = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'dis_max_rated'),'Value'].values[0])
-  battcapmax = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ene_max_rated'),'Value'].values[0])
-  maxsoc = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ulsoc'),'Value'].values[0])
-  minsoc = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'llsoc'),'Value'].values[0])
-  splitmktTF = bool(params.loc[(params['Tag'] == 'FR') & (params['Key'] == 'CombinedMarket'),'Value'].values[0])
-  rte = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'rte'),'Value'].values[0])/100
-  battcap = battcapmax * (maxsoc / 100)
+    def set_SR_user_constraints(self):
+        """create user constraints for spinning reserve within window defined by resHour
+      according to the logic of the regScenario """
+        # Create user constraints based on resource hours and regulation scenario
+        SR_contraint_output = self.output.copy(deep=True).reset_index(drop=True)
 
-  # start by pre-filling output with dummy constraints that dont do anything - just replicate batt params
-  output = pd.DataFrame(index = pd.date_range(start="1/1/2019",periods=8760,freq="h"), columns = ["chgMin_kW","chgMax_kW","eMin_kWh","eMax_kWh"])
-  output.loc[:,"eMin_kWh"] = battcap * (minsoc/100)
-  output.loc[:,"eMax_kWh"] = battcap * (maxsoc/100)
-  output.loc[:,"chgMin_kW"] = battpwr * -1
-  output.loc[:,"chgMax_kW"] = battpwr
+        if self.regulation_scenario == 1:  # ENERGY reservations based on resource hours & service prices
+            # TODO: account for different ch/disch, and CHARGING EFFICIENCY
+            SR_contraint_output.loc[self.window_index, "chgMin_kW"] = - 1
+            SR_contraint_output.loc[self.window_index, "chgMax_kW"] = 1
+            SR_contraint_output.loc[self.window_index, "eMin_kWh"] = \
+                self.battery_energy_rated * self.min_soc + self.battery_charging_power_max  # TODO: why not +discharge?
+            SR_contraint_output.loc[self.window_index, "eMax_kWh"] = \
+                self.battery_energy_rated * self.max_soc - self.battery_charging_power_max * self.round_trip_efficiency  # TODO: why -?
 
-  # load timeseries - has prices, results
-  timeseries = pd.read_csv(resultsPath + "timeseries_results_runID" + str(runID) + ".csv"  )
-  timeseries["date"] = pd.to_datetime(timeseries['Start Datetime (hb)'])
-  timeseries = timeseries.set_index('date')
+            # Calculate NSR values
+            previous_outputs_values = self.previous_outputs["SR Price Signal ($/kW)"] * self.battery_charging_power_max
+            SR_values = sum(previous_outputs_values[self.window_index])
 
-  if regScenario == 1:
-    ## create reservations based on resHours
-    ### ID duration of fr commitment & batt storage size -> calculate energy reservation requirement
-    #TODO: account for different ch/disch, and CHARGING EFFICIENCY
+        elif self.regulation_scenario == 2:  # ONE-SIDED reservations based on resource hours
+            raise ValueError("regulation_scenario 2 doesn't exist yet for SR")
+        elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
+            # Avoid infeasibility TODO: understand this
+            prebvious_outputs_copy = self.previous_outputs.copy(deep=True)
+            sel = (prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'] +
+                   prebvious_outputs_copy['Spinning Reserve (Charging) (kW)']) >= self.battery_charging_power_max * 2
+            prebvious_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] = \
+                prebvious_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] - 1
 
-    # output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMin_kWh'] = (battcapmax * (minsoc / 100)) + battpw #
-    # output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMax_kWh'] = battcap - rte*battpwr
-    # output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMin_kW'] = -1
-    # output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMax_kW'] = 1
-    # 
-    # # calculate value - multiply FR price signal by battpwr for every active hour
-    # valueseries_up = timeseries.loc[:,"Regulation Up Price Signal ($/kW)"] * battpwr
-    # valueseries_d = timeseries.loc[:,"Regulation Down Price Signal ($/kW)"] * battpwr
-    # ll = (timeseries.index.hour >= resHour[0]) & (timeseries.index.hour <= resHour[1])
-    # value = sum(valueseries_up[ll],valueseries_d[ll])
-    raise ValueError("regScenario 1 has not been coded yet")
-  elif regScenario == 2:
-    raise ValueError("regScenario 2 has not been coded yet")
-  elif regScenario == 3:
-    #create reservations based on previous dispatch
- 
-  # minimum charging (max discharging) behavior must make room for FR net discharging.
-  # wait, minimum charging behavior must make room for max FR power response - this should be based on 'Regulation Down (Charging) (kW)' and 'Regulation Down (Discharging) (kW)'
-    # regup is provided by charging less / discharging more. so, power levels must be high enough that they can be reduced for FR call
-    chgmin = -1*(battpwrd - timeseries['Regulation Up (Discharging) (kW)'] - timeseries['Regulation Up (Charging) (kW)'])
-    # regd is provided by charging more / discharging less. so, power levels must be low enough that they can be increased for FR up call
-    chgmax = battpwr - timeseries['Regulation Down (Charging) (kW)'] - timeseries['Regulation Down (Discharging) (kW)']
-    # timeseries['FR Energy Throughput Down (Discharging) (kWh)'] + timeseries['FR Energy Throughput Up (Charging) (kWh)'])
-    # energy throuput is given - must have space for throuput. Can either do this with net for hour, or with worst case (disaggregate charge and discharge)
-    # for simplicity we will do the net for hour for now
-    # negative values for FR energy Throughput indicate charging. total effect on battery charge is net of actual charging and FR energy throughput
-    # so, actual change in battery charge will be [initial SOC] + [batt chg * efficiency] - [batt discharge] + [FR energy throuput]
-    # obviously power is linked to FR provision, and we *could* include that in the energy limitations, and this could make for a more OR LESS
-    # constraining energy limitation. e.g. in the case of energy up provision, the battery is charging full steam, but also discharging quite a bit for FR
-    # and the net of these makes for a less constrained energy limit
-    # impt to note that FR energy throughput has already factored in charging efficiency
-    nrgmax = battcap + timeseries['FR Energy Throughput (kWh)'] - chgmin * rte #TODO: sanity check the use of rte!!!
-    nrgmin = (battcap * (minsoc/100)) + timeseries['FR Energy Throughput (kWh)'] - chgmax # positive throuput is discharging. chgmax is negative to indicate required discharging
-    # nrgmin = battcap + timeseries['Spinning Reserve (Discharging) (kW)']
-    # nrgmax = battcap - rte*timeseries['Spinning Reserve (Charging) (kW)']
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMin_kW'] = chgmin.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'chgMax_kW'] = chgmax.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMin_kWh'] = nrgmin.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
-    output.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1]),'eMax_kWh'] = nrgmax.loc[(output.index.hour >= resHour[0]) & (output.index.hour <= resHour[1])]
+            charging_min = - 1 * (self.battery_discharging_power_max -
+                                  prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'])
+            charging_max = self.battery_charging_power_max - \
+                           prebvious_outputs_copy['Spinning Reserve (Charging) (kW)']
+            energy_min = self.battery_energy_rated * self.min_soc + \
+                         prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)']
+            energy_max = self.battery_energy_rated * self.max_soc - \
+                         prebvious_outputs_copy['Spinning Reserve (Charging) (kW)'] * self.round_trip_efficiency
 
- 
-    ll = (timeseries.index.hour >= resHour[0]) & (timeseries.index.hour <= resHour[1])
-    # valueseries = timeseries.loc[:,"SR Price Signal ($/kW)"] * (timeseries['Spinning Reserve (Discharging) (kW)'] + timeseries['Spinning Reserve (Charging) (kW)'])
-    valueseries = ((timeseries.loc[:,"FR Energy Settlement Price Signal ($/kWh)"] * timeseries['FR Energy Throughput (kWh)']) +
-                  (timeseries.loc[:,"Regulation Down Price Signal ($/kW)"] * (timeseries['Regulation Down (Charging) (kW)'] + timeseries['Regulation Down (Discharging) (kW)'])) +
-                  (timeseries.loc[:,"Regulation Up Price Signal ($/kW)"] * (timeseries['Regulation Up (Charging) (kW)'] + timeseries['Regulation Up (Discharging) (kW)'])))
-    value = sum(valueseries[ll])
-  else:
-    raise ValueError("regScenario must be 1, 2 or 3")
+            # Update constraints in the output
+            SR_contraint_output.loc[self.window_index, "chgMin_kW"] = charging_min.loc[self.window_index]
+            SR_contraint_output.loc[self.window_index, "chgMax_kW"] = charging_max.loc[self.window_index]
+            SR_contraint_output.loc[self.window_index, "eMin_kWh"] = energy_min.loc[self.window_index]
+            SR_contraint_output.loc[self.window_index, "eMax_kWh"] = energy_max.loc[self.window_index]
 
-  return(output, value)
+            # Calculate NSR values
+            previous_outputs_values = prebvious_outputs_copy["SR Price Signal ($/kW)"] * \
+                                      (prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'] +
+                                       prebvious_outputs_copy['Spinning Reserve (Charging) (kW)'])
+            SR_values = sum(previous_outputs_values[self.window_index])
 
-def ra0Fn(resultsPath, runID, resHour, regScenario, kwmo_value = 5):
-  """create user constraints for RA dispmode 0 within window defined by resHour
-  according to the logic of the regScenario """
-  print("ra0Fn called")
-  # load parameter file for run
-  params = pd.read_csv(resultsPath + "params_run" + str(runID) + ".csv")
-  battpwr = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ch_max_rated'),'Value'].values[0])
-  battpwrd = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'dis_max_rated'),'Value'].values[0])
-  battcapmax = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ene_max_rated'),'Value'].values[0])
-  maxsoc = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'ulsoc'),'Value'].values[0])
-  minsoc = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'llsoc'),'Value'].values[0])
-  battcap = battcapmax * (maxsoc / 100)
-  rte = float(params.loc[(params['Tag'] == 'Battery') & (params['Key'] == 'rte'),'Value'].values[0])/100
-  ralength = minsoc = float(params.loc[(params['Tag'] == 'RA') & (params['Key'] == 'length'),'Value'].values[0])
-  
-  # Load hourly_timeseries so that we can edit this file to create our desired scenario
-  basedata = pd.read_csv(SVet_Path+"Data/hourly_timeseries_2019.csv")
-  basedata = basedata.set_index(pd.date_range(start="1/1/2019",periods=8760,freq="h"))
-  basedata['Power Min (kW)'] = battpwr * -1
-  basedata['Power Max (kW)'] = battpwr
-  basedata['Energy Max (kWh)'] = battcap * (maxsoc/100)
-  basedata['Energy Min (kWh)'] = battcap * (minsoc/100)
+        else:
+            raise ValueError("regulation_scenario must be 1, 2 or 3")
 
+        # Create a new hourly timeseries dataframe as the Scenario time series file for a new SV run
+        new_hourly_timeseries = self.previous_initial_hourly_timeseries.copy(deep=True)
+        new_hourly_timeseries['Power Min (kW)'] = np.array(SR_contraint_output['chgMin_kW'])
+        new_hourly_timeseries['Power Max (kW)'] = np.array(SR_contraint_output['chgMax_kW'])
+        new_hourly_timeseries['Energy Max (kWh)'] = np.array(SR_contraint_output['eMax_kWh'])
+        new_hourly_timeseries['Energy Min (kWh)'] = np.array(SR_contraint_output['eMin_kWh'])
 
-  # output = pd.DataFrame(index = pd.date_range(start="1/1/2019",periods=8760,freq="h"), columns = ["chgMin_kW","chgMax_kW","eMin_kWh","eMax_kWh"])
-  # output.loc[:,"eMin_kWh"] = battcap * (minsoc/100)
-  # output.loc[:,"eMax_kWh"] = battcap * (maxsoc/100)
-  # output.loc[:,"chgMin_kW"] = battpwr * -1
-  # output.loc[:,"chgMax_kW"] = battpwr
+        new_shortname = "runID{}_constraintSR_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
+                                                                   self.app_hours[0], self.app_hours[1])
+        old_svrun_params = self.previous_svrun_params
+        new_svrun_params = copy.deepcopy(old_svrun_params)
+        new_svrun_params['SR_active'] = "no"
+        for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
+                    'Results_label', 'Results_errors_log_path']:
+            new_svrun_params.pop(k, None)
+        new_hourly_timeseries_path = self.runID_result_folder_path + \
+                                     "/_new_hourly_timeseries_{}.csv".format(new_shortname)
+        new_hourly_timeseries.to_csv(new_hourly_timeseries_path, index=False)
 
-  # load timeseries - has prices, results
-  # timeseries = pd.read_csv(resultsPath + "timeseries_results_runID" + str(runID) + ".csv"  )
-  # timeseries["date"] = pd.to_datetime(timeseries['Start Datetime (hb)'])
-  # timeseries = timeseries.set_index('date')
+        return old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, SR_values
 
-  if regScenario == 1: #create energy reservations based on reshours & change prices
-    # how do I prevent the batt from participating in other services during this window, except for energy arbitrage?
-    # could change the prices of other services so that they are negative
-    # can't really retain energy arbitrage and forego the others...
-    #ok so what would 'RA only' look like? we've got the energy reservation... 
+    def set_FR_user_constraints(self):
+        """create user constraints for frequency regulation within window defined by resHour
+      according to the logic of the regScenario """
+        # Create user constraints based on resource hours and regulation scenario
+        FR_contraint_output = self.output.copy(deep=True).reset_index(drop=True)
 
-    basedata.loc[(basedata.index.hour == resHour[0]),'Energy Min (kWh)'] = battpwrd * ralength #SOC must be sufficient at beginning of each RA period
-    basedata.loc[(basedata.index.hour >= resHour[0]) & (basedata.index.hour <= resHour[1]),'FR Price ($/kW)'] = 0
-    basedata.loc[(basedata.index.hour >= resHour[0]) & (basedata.index.hour <= resHour[1]),'Reg Up Price ($/kW)'] = 0
-    basedata.loc[(basedata.index.hour >= resHour[0]) & (basedata.index.hour <= resHour[1]),'Reg Down Price ($/kW)'] = 0
-    basedata.loc[(basedata.index.hour >= resHour[0]) & (basedata.index.hour <= resHour[1]),'NSR Price ($/kW)'] = 0
-    basedata.loc[(basedata.index.hour >= resHour[0]) & (basedata.index.hour <= resHour[1]),'SR Price ($/kW)'] = 0
+        # Create user constraints based on resource hours and regulation scenario
+        if self.regulation_scenario == 1:  # ENERGY reservations based on resource hours & service prices
+            # TODO: account for different ch/disch, and CHARGING EFFICIENCY
+            raise ValueError("regulation_scenario 1 doesn't exist yet for FR")
+        elif self.regulation_scenario == 2:  # ONE-SIDED reservations based on resource hours
+            raise ValueError("regulation_scenario 2 doesn't exist yet for FR")
+        elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
+            # RegUP is provided by charging less / discharging more:
+            # Power levels must be high enough that they can be reduced for FR call
+            charging_min = - 1 * (self.battery_discharging_power_max -
+                                  self.previous_outputs[
+                                      'Regulation Up (Discharging) (kW)'] -  # save this portion of discharging
+                                  self.previous_outputs['Regulation Up (Charging) (kW)'])  # charge less
+            # RegDOWN is provided by charging more / discharging less:
+            # Power levels must be low enough that they can be reduced for FR call
+            charging_max = self.battery_charging_power_max - \
+                           self.previous_outputs['Regulation Down (Charging) (kW)'] - \
+                           self.previous_outputs['Regulation Down (Discharging) (kW)']
+            # Energy throughput is given - must have space for net (less constraint)
+            energy_max = self.battery_energy_rated * self.max_soc + \
+                         self.previous_outputs['FR Energy Throughput (kWh)'] - \
+                         charging_min * self.round_trip_efficiency  # TODO: k values and RTD sanity check
+            energy_min = self.battery_energy_rated * self.min_soc + \
+                         self.previous_outputs['FR Energy Throughput (kWh)'] - charging_max
 
-    # calculate value - how is this done for RA rn? Ra capacity price ($/kW/mo) * mos * battpwr
-    # I can do this in post-process
+            # Update constraints in the output
+            FR_contraint_output.loc[self.window_index, "chgMin_kW"] = charging_min.loc[self.window_index]
+            FR_contraint_output.loc[self.window_index, "chgMax_kW"] = charging_max.loc[self.window_index]
+            FR_contraint_output.loc[self.window_index, "eMin_kWh"] = energy_min.loc[self.window_index]
+            FR_contraint_output.loc[self.window_index, "eMax_kWh"] = energy_max.loc[self.window_index]
 
-  elif regScenario == 2: # create onesided reservations based on reshours
-    basedata.loc[(basedata.index.hour == resHour[0]),'Energy Min (kWh)'] = battpwrd * ralength #SOC must be sufficient at beginning of each RA period
- 
-  elif regScenario == 3: # create reservations based on prev dispatch
-    raise ValueError("recScenario 3 doesn't exsit yet for RA")
-  else:
-    raise ValueError("regScenario must be 1, 2 or 3")
+            # Calculate FR values
+            previous_outputs_values = ((self.previous_outputs.loc[:, "FR Energy Settlement Price Signal ($/kWh)"] *
+                                        self.previous_outputs['FR Energy Throughput (kWh)']) +
+                                       (self.previous_outputs.loc[:, "Regulation Down Price Signal ($/kW)"] *
+                                        (self.previous_outputs['Regulation Down (Charging) (kW)'] +
+                                         self.previous_outputs['Regulation Down (Discharging) (kW)'])) +
+                                       (self.previous_outputs.loc[:, "Regulation Up Price Signal ($/kW)"] *
+                                        (self.previous_outputs['Regulation Up (Charging) (kW)'] +
+                                         self.previous_outputs['Regulation Up (Discharging) (kW)'])
+                                        ))
+            FR_values = sum(previous_outputs_values[self.window_index])
 
-  output = basedata
-  value = kwmo_value * battpwrd * 12
-  return(output,value)
+        else:
+            raise ValueError("regulation_scenario must be 1, 2 or 3")
+
+        # Create a new hourly timeseries dataframe as the Scenario time series file for a new SV run
+        new_hourly_timeseries = self.previous_initial_hourly_timeseries.copy(deep=True)
+        new_hourly_timeseries['Power Min (kW)'] = np.array(FR_contraint_output['chgMin_kW'])
+        new_hourly_timeseries['Power Max (kW)'] = np.array(FR_contraint_output['chgMax_kW'])
+        new_hourly_timeseries['Energy Max (kWh)'] = np.array(FR_contraint_output['eMax_kWh'])
+        new_hourly_timeseries['Energy Min (kWh)'] = np.array(FR_contraint_output['eMin_kWh'])
+
+        new_shortname = "runID{}_constraintFR_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
+                                                                   self.app_hours[0], self.app_hours[1])
+        old_svrun_params = self.previous_svrun_params
+        new_svrun_params = copy.deepcopy(old_svrun_params)
+        new_svrun_params['FR_active'] = "no"
+        for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
+                    'Results_label', 'Results_errors_log_path']:
+            new_svrun_params.pop(k, None)
+        new_hourly_timeseries_path = self.runID_result_folder_path + \
+                                     "/_new_hourly_timeseries_{}.csv".format(new_shortname)
+        new_hourly_timeseries.to_csv(new_hourly_timeseries_path, index=False)
+
+        return old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, FR_values
+
+    def set_RA0_user_constraints(self, RA_monthly_values_per_kW=5):
+        """create user constraints for RA dispmode 0 within window defined by resHour
+      according to the logic of the regScenario """
+        # Create user constraints based on resource hours and regulation scenario
+        new_hourly_timeseries = self.previous_initial_hourly_timeseries.copy(deep=True)
+        new_hourly_timeseries.set_index(self.output.index)
+
+        new_hourly_timeseries['Power Min (kW)'] = - self.battery_charging_power_max  # TODO: why?
+        new_hourly_timeseries['Power Max (kW)'] = self.battery_charging_power_max  # TODO: why?
+        new_hourly_timeseries['Energy Max (kWh)'] = self.battery_energy_rated * \
+                                                    self.max_soc  # TODO: previous way has double counted max_soc
+        new_hourly_timeseries['Energy Min (kWh)'] = self.battery_energy_rated * self.min_soc
+
+        # Create user constraints based on resource hours and regulation scenario
+        if self.regulation_scenario == 1:  # ENERGY reservations based on resource hours & service prices
+            # SOC must be sufficient at beginning of each RA period
+            new_hourly_timeseries.loc[self.window_start_index,
+                                      'Energy Min (kWh)'] = self.battery_discharging_power_max * self.RA_length
+            # Set prices of other services as 0 during this window
+            incompatible_services = ['FR Price ($/kW)', 'Reg Up Price ($/kW)', 'Reg Down Price ($/kW)',
+                                     'NSR Price ($/kW)', 'SR Price ($/kW)']
+            for service in incompatible_services:
+                new_hourly_timeseries.loc[self.window_index, service] = 0
+        elif self.regulation_scenario == 2:  # ONE-SIDED reservations based on resource hours
+            # SOC must be sufficient at beginning of each RA period
+            new_hourly_timeseries.loc[self.window_start_index, 'Energy Min (kWh)'] = \
+                self.battery_discharging_power_max * self.RA_length
+        elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
+            raise ValueError("regulation_scenario 3 doesn't exist yet for RA")  # TODO
+        else:
+            raise ValueError("regulation_scenario must be 1, 2 or 3")
+
+        # Calculate RA values
+        RA_values = RA_monthly_values_per_kW * 12 * self.battery_discharging_power_max
+
+        # Create a new hourly timeseries dataframe as the Scenario time series file for a new SV run
+        new_shortname = "runID{}_constraintRA0_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
+                                                                    self.app_hours[0], self.app_hours[1])
+        old_svrun_params = self.previous_svrun_params
+        new_svrun_params = copy.deepcopy(old_svrun_params)
+        new_svrun_params['RA_active'] = "no"
+        for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
+                    'Results_label', 'Results_errors_log_path']:
+            new_svrun_params.pop(k, None)
+        new_hourly_timeseries_path = self.runID_result_folder_path + \
+                                     "/_new_hourly_timeseries_{}.csv".format(new_shortname)
+        new_hourly_timeseries.to_csv(new_hourly_timeseries_path, index=False)
+
+        return old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, RA_values

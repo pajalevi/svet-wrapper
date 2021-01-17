@@ -19,7 +19,7 @@ import datetime
 import shutil
 
 
-class SVetObject:
+class SvetObject:
     def __init__(self, SVet_absolute_path, description, shortname, **params):
         self.SVet_absolute_path = SVet_absolute_path
         self.SVet_script = SVet_absolute_path + "run_StorageVET.py"
@@ -32,137 +32,145 @@ class SVetObject:
 
         self.params = params
 
-    def update_runlog_csv(self):
-        """Creates a new entry in Run Log, returns runID of current run"""
-
-        # check if runlog_csv has been created, if not create a new csv with relevant column names
+        # Check if run log csv has been created, if not create a new csv with relevant column names
         if not (os.path.exists(self.runs_log_file)):
             runsLog = pd.DataFrame(columns=["runID", "date", "gitID", "shortname", "description", "status"], index=None)
             runsLog.to_csv(self.runs_log_file, index=None)
+            # TODO: add more cols here if we want to track more info
         else:
             runsLog = pd.read_csv(self.runs_log_file)
 
-        # identify new runID by examining runs log
-        runID = str(int(runsLog['runID'].max()) + 1) if runsLog['runID'].max() is not np.nan else str(1)
-        print("This run has ID number " + runID)
+        # Identify new runID by examining runs log, and update runs log
+        self.runID = str(int(runsLog['runID'].max()) + 1) if runsLog['runID'].max() is not np.nan else str(1)
+        print("This run has ID number " + self.runID)
+        update_runlog_csv(self.SVet_absolute_path, self.runs_log_file, self.runID, self.shortname, self.description)
 
-        # identify current git hash
-        # this must be called from within the git repo in order to work
-        old_path = os.getcwd()
-        os.chdir(self.SVet_absolute_path)
-        try:
-            gitID_raw = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).strip()
-            gitID = gitID_raw.strip().decode('ascii')
-        except:
-            gitID = "No git repository"
-        os.chdir(old_path)
+        # Create param csv from default param csv
+        self.runID_result_folder_path = self.results_path + "output_run" + self.runID + "_" + self.shortname
+        self.runID_param_path = self.runID_result_folder_path + "/params_run" + self.runID + ".csv"
+        self.runID_dispatch_timeseries_path = self.runID_result_folder_path + \
+                                              "/timeseries_results_runID" + self.runID + ".csv"
+        self.new_params = setup_param_csv(self.params, self.default_params_file, self.runID,
+                                          self.runID_result_folder_path, self.runID_param_path)
+        # TODO: add npv or payback file path here if needed
 
-        # get date
-        date = datetime.datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
+        # Save initial Scenario_time_series_filename into the results folder
+        initial_hourly_timeseries = pd.read_csv(self.params['Scenario_time_series_filename'])
+        initial_hourly_timeseries.to_csv(self.runID_result_folder_path + "/_initial_hourly_timeseries_runID{}.csv"
+                                         .format(self.runID), index=False)
+        self.initial_hourly_timeseries = initial_hourly_timeseries
 
-        # create entry in runs log
-        new_run_log_line = "\n" + str(runID) + "," + date + "," + gitID + "," + \
-                           self.shortname.replace(",", ".") + "," + self.description.replace(",", ".")
-        # append line
-        with open(self.runs_log_file, 'a') as rl:
-            rl.write(new_run_log_line)
+        # Run StorageVET with version control
+        run_storagevet(self.SVet_script, self.runs_log_file, self.runID,
+                       self.runID_result_folder_path, self.runID_param_path)
 
-        return runID
 
-    def setup_param_csv(self):
-        """This function takes an arbitrary dict of params to modify, creates the appropriate
-      params csv, and saves it in result_fol. It returns the full filepath. The keys in params
-      must have the format 'Tag_Key'  """
+def update_runlog_csv(SVet_absolute_path, runs_log_file, runID, shortname, description):
+    """Creates a new entry in Run Log"""
+    # Identify current git hash
+    # this must be called from within the git repo in order to work
+    old_path = os.getcwd()
+    os.chdir(SVet_absolute_path)
+    try:
+        gitID_raw = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).strip()
+        gitID = gitID_raw.strip().decode('ascii')
+    except:
+        gitID = "No git repository"
+    os.chdir(old_path)
 
-        # read params and save folders
-        runID = self.update_runlog_csv()
-        result_fol = "output_run" + runID + "_" + self.shortname
-        params = self.params
-        if os.path.exists(self.results_path + result_fol):
-            shutil.rmtree(self.results_path + result_fol)
-        os.makedirs(self.results_path + result_fol)
+    # Get date
+    date = datetime.datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
 
-        # add Results_dir_absolute_path and Results_label to params
-        params['Results_dir_absolute_path'] = self.results_path + result_fol + "/"
-        params['Results_label'] = "_runID" + str(runID)
-        params['Results_errors_log_path'] = self.results_path + result_fol + "/"
+    # Create entry in runs log TODO: add more cols here if needed
+    new_run_log_line = "\n" + str(runID) + "," + date + "," + gitID + "," + \
+                       shortname.replace(",", ".") + "," + description.replace(",", ".")
+    # Append line
+    with open(runs_log_file, 'a') as rl:
+        rl.write(new_run_log_line)
 
-        # load default params csv
-        default_params = pd.read_csv(self.default_params_file)
 
-        # parse params arg and change params
-        for p in params:
-            # parse out tag from key
-            tag, key = p.split("_", 1)
-            filter_tag = default_params.Tag == tag
+def setup_param_csv(params, default_params_file, runID, runID_result_folder_path, runID_param_path):
+    """This function takes an arbitrary dict of params to modify, creates the appropriate
+  params csv, and saves it in result_fol. It returns the full filepath. The keys in params
+  must have the format 'Tag_Key'  """
 
-            if key == "Active" or key == "active":
-                # change activity of that tag
-                filter_activation = default_params.Active != "."
-                filter_all = filter_tag & filter_activation
-                if sum(filter_all) != 1:
-                    raise RuntimeError(
-                        "Identified the wrong number of rows to change for Active status for tag " + str(tag))
-                default_params.loc[filter_all, 'Active'] = params[p]
-            else:
-                # identify correct row, return error if not found
-                filter_key = default_params.Key == key
-                filter_all = filter_tag & filter_key
-                # change value
-                default_params.loc[filter_all, 'Value'] = params[p]
+    # Create a runID result folder
+    if os.path.exists(runID_result_folder_path):
+        shutil.rmtree(runID_result_folder_path)
+    os.makedirs(runID_result_folder_path)
 
-        # save new params in results folder
-        param_filepath = self.results_path + result_fol + "/params_run" + str(runID) + ".csv"
-        default_params.to_csv(param_filepath, index=False)
+    # Add Results_dir_absolute_path and Results_label to params
+    params['Results_dir_absolute_path'] = runID_result_folder_path + "/"
+    params['Results_label'] = "_runID" + str(runID)
+    params['Results_errors_log_path'] = runID_result_folder_path + "/"
 
-        # return params file path
-        return param_filepath, runID, result_fol
+    # Load default params csv
+    default_params_file = pd.read_csv(default_params_file)
+    new_params = default_params_file.copy(deep=True)
 
-    def run_storagevet(self):
-        """Runs StorageVET via command line"""
+    # parse params arg and change params
+    for p in params:
+        # parse out tag from key
+        tag, key = p.split("_", 1)
+        filter_tag = new_params.Tag == tag
 
-        # obtain params
-        param_filepath, runID, result_fol = self.setup_param_csv()
+        if key == "Active" or key == "active":
+            # change activity of that tag
+            filter_activation = new_params.Active != "."
+            filter_all = filter_tag & filter_activation
+            if sum(filter_all) != 1:
+                raise RuntimeError(
+                    "Identified the wrong number of rows to change for Active status for tag " + str(tag))
+            new_params.loc[filter_all, 'Active'] = params[p]
+        else:
+            # identify correct row, return error if not found
+            filter_key = new_params.Key == key
+            filter_all = filter_tag & filter_key
+            # change value
+            new_params.loc[filter_all, 'Value'] = params[p]
 
-        # check that result folder exists with param file in it
-        if not (os.path.exists(param_filepath)):
-            raise FileNotFoundError("Params file does not exist. Given path was " + param_filepath)
+    # Save new params
+    new_params.to_csv(runID_param_path, index=False)
+    return new_params
 
-        # call StorageVET
-        print("Running StorageVET for runID" + runID + " with parameters in " + param_filepath)
-        process = subprocess.Popen(["python", self.SVet_script, param_filepath],
-                                   stdout=subprocess.PIPE)
 
-        # read output in realtime
-        while True:
-            line = process.stdout.readline()
-            if not line:
-                break
+def run_storagevet(SVet_script, runs_log_file, runID, runID_result_folder_path, runID_param_path):
+    """Runs StorageVET via command line"""
+    # Check that result folder exists with param file in it
+    if not (os.path.exists(runID_param_path)):
+        raise FileNotFoundError("Params file does not exist. Given path was " + runID_param_path)
 
-        # check error log file for the current run
-        with open(self.results_path + result_fol + r"/\errors_log.log", 'r') as f:
-            lines = [str(line) for line in f]
-            if len(lines) != 1:
-                status = "ERROR"
-            else:
-                status = "COMPLETED"
-        return status, runID, result_fol
+    # Call StorageVET
+    print("Running StorageVET for runID" + runID + " with parameters in " + runID_param_path)
+    process = subprocess.Popen(["python", SVet_script, runID_param_path],
+                               stdout=subprocess.PIPE)
 
-    def run_storagevet_with_vc(self):
-        """calls paramSetup, creates result folder, updates runsLog, and runs StorageVET
-      params arguments should have the format 'Tag_Key = 'Value' """
-        print(self.params)
+    # Read output in realtime
+    while True:
+        line = process.stdout.readline()
+        if not line:
+            break
 
-        # call storageVET
-        status, runID, result_fol = self.run_storagevet()
+    # Check error log file for the current run
+    with open(runID_result_folder_path + r"/\errors_log.log", 'r') as f:
+        lines = [str(line) for line in f]
+        if len(lines) != 1:
+            status = "ERROR"
+        else:
+            status = "COMPLETED"
+    # Check if npv in results folder
+    all_file_name = ''
+    for f in os.listdir(runID_result_folder_path + "/"):
+        all_file_name += str(f)
+    status = "ERROR" if 'npv' not in all_file_name else "COMPLETED"
 
-        # save status to runlogs, remove entry and folder in cases of failure
-        # if status == "ERROR":
-        #     shutil.rmtree(self.results_path + result_fol)
-        # else:
-        #     pass
+    # Save status to runlogs, remove entry and folder in cases of failure
+    # if status == "ERROR":
+    #     shutil.rmtree(self.results_path + result_fol)
+    # else:
+    #     pass
 
-        # for now, we can log in status in cases of failure as well
-        runsLog = pd.read_csv(self.runs_log_file)
-        runsLog.loc[runsLog['runID'] == int(runID), ['status']] = status
-        runsLog.to_csv(self.runs_log_file, index=None)
+    # For now, we can log in status in cases of failure as well
+    runsLog = pd.read_csv(runs_log_file)
+    runsLog.loc[runsLog['runID'] == int(runID), ['status']] = status
+    runsLog.to_csv(runs_log_file, index=None)
