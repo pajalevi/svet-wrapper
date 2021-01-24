@@ -12,54 +12,53 @@ import pandas as pd
 import numpy as np
 import copy
 
-# TODO
-def combine_runs(SVet_absolute_path, multiple_runID, app_types, app_hours, regulation_scenario):
-    """This function takes as input the type of regulatory scenario desired and three
-  pieces of information regarding each run used to make the combined run: the run number,
-  the resource type {“NSR”,”SR”,”RA1”,”RA0”,”DR1”,”DR0”…} and the hours in which a resource
-  is given priority (e.g. [[6,16], [16,23]]), which may not overlap. It uses this information
-  to run StorageVET with the desired combination of storage value stacking"""
+from vc_wrap import SvetObject
 
-    # check that multiple_runID, app_types, and app_hours are the same length
-    if all(len(lst) == len(multiple_runID) for lst in [app_types, app_hours]):
+
+def combine_runs(SVet_absolute_path, baseline_svetobject, app_types, app_hours, regulation_scenario):
+    """This function takes as input the type of regulatory scenario desired and three
+  pieces of information regarding each run used to make the combined run:
+
+    the resource type: [“NSR”,”SR”,”RA0”,”FR”]
+    the hours in which a resource is given priority [[6,16], [16,23]]
+    the regulation scenario for reach resource type: [1, 3, 3]
+
+    It uses this information to run StorageVET with the desired combination of storage value stacking"""
+
+    # Check that app_types, and app_hours and regulation_scenario are the same length
+    if all(len(lst) == len(regulation_scenario) for lst in [app_types, app_hours]):
         pass
     else:
-        raise ValueError("wrong input list length for combine_runs")
+        raise ValueError("Wrong input list length for combine_runs")
 
-    # check for overlap in app_hours & that each element has length 2
-
-    # create empty matrix of user constraints
-
-    # create placeholder for value
-
-    # for each resource...
-    for i in range(len(multiple_runID)):
+    # Check for overlap in app_hours & that each element has length 2
+    if all(len(lst) == 2 for lst in app_hours) & (sum(app_hours, []) == sorted(sum(app_hours, []))):
         pass
-        # ID folder:
-        # read in runs log file
-        # runsLog = pd.read_csv(SVet_Path + runs_log_file)
-        # runsfilter = runsLog['runID'] == runIDs[i]
-        # shortname = runsLog.loc[runsLog['runID'] == runIDs[i]]['shortname'].values[0]
-        # # id row with runID
-        # # id shortname
-        #
-        # # call appropriate read-in fn for that resource
-        # resultsPath = SVet_Path + "Results/output_run" + str(
-        #     runIDs[i]) + "_" + shortname + "/"  # "timeseries_results_runID" + str(runIDs[i]) + ".csv"
-        #
-        # resType_to_fn(resTypes[i], resultsPath, resHours[i], regScenario)
+    else:
+        raise ValueError("Wrong input resource hours for combine_runs")
 
-        # add outputs to user constraint matrix
-        # select for most binding user constraints
-        # add value to value placeholder
+    # Check if app_types contain valid options
+    if all(i in ["NSR", "SR", "RA0", "FR"] for i in app_types):
+        pass
+    else:
+        raise ValueError("Wrong input resource types for combine_runs")
 
-    # write new hourly_timseries input file
+    # Iterate through each resource type
+    new_svet_object = baseline_svetobject
+    for i in range(len(app_types)):
+        new_constraint_object = ConstraintObject(SvetObject=new_svet_object, app_hours=app_hours[i],
+                                                 regulation_scenario=regulation_scenario[i])
+        constraint_function = getattr(new_constraint_object, "set_" + app_types[i] + "_user_constraints")
+        old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, values = constraint_function()
+        new_svet_object = SvetObject(SVet_absolute_path=SVet_absolute_path,
+                                     shortname=new_shortname,
+                                     description="run #{}".format(i),
+                                     Scenario_time_series_filename=new_hourly_timeseries_path,
+                                     User_active="yes", User_price=values,
+                                     **new_svrun_params)
+        print(i, "values ", values)
 
-    # git commit if NOT test
-
-    # run svet via vc_wrap
-
-    return None
+    return print("Combine runs has been completed")
 
 
 class ConstraintObject:
@@ -68,7 +67,7 @@ class ConstraintObject:
         self.previous_runID = SvetObject.runID
         self.previous_svrun_params = SvetObject.params
 
-        self.previous_initial_hourly_timeseries = SvetObject.initial_hourly_timeseries
+        previous_initial_hourly_timeseries = SvetObject.initial_hourly_timeseries
         self.runID_result_folder_path = SvetObject.runID_result_folder_path
 
         # Load constraint parameters
@@ -110,30 +109,34 @@ class ConstraintObject:
         self.previous_outputs = previous_outputs
 
         # Initialize a constraint object
-        output = pd.DataFrame(index=previous_outputs_datetime,
-                              columns=["chgMin_kW", "chgMax_kW", "eMin_kWh", "eMax_kWh"])
-        output.loc[:, "eMin_kWh"] = self.battery_energy_rated * self.min_soc
-        output.loc[:, "eMax_kWh"] = self.battery_energy_rated * self.max_soc  # TODO: double counted max_soc previously
-        output.loc[:, "chgMin_kW"] = - self.battery_charging_power_max  # TODO: why?
-        output.loc[:, "chgMax_kW"] = self.battery_charging_power_max  # TODO: why?
-        self.output = output
+        # new_hourly_timeseries = pd.DataFrame(index=pd.to_datetime(self.previous_initial_hourly_timeseries.iloc[:, 0]),
+        #                                      columns=["chgMin_kW", "chgMax_kW", "eMin_kWh", "eMax_kWh"])
+        # new_hourly_timeseries.loc[:, "eMin_kWh"] = self.battery_energy_rated * self.min_soc
+        # new_hourly_timeseries.loc[:, "eMax_kWh"] = self.battery_energy_rated * self.max_soc  # TODO: double counted max_soc previously
+        # new_hourly_timeseries.loc[:, "chgMin_kW"] = - self.battery_discharging_power_max
+        # new_hourly_timeseries.loc[:, "chgMax_kW"] = self.battery_charging_power_max
+        # self.new_hourly_timeseries = new_hourly_timeseries
 
         # Determine indexes
-        self.window_start_index = output.index.hour == app_hours[0]
-        self.window_index = (output.index.hour >= app_hours[0]) & (output.index.hour <= app_hours[1])
-        self.window_end_index = output.index.hour == app_hours[1]
+        previous_initial_hourly_timeseries['datetime'] = pd.to_datetime(previous_initial_hourly_timeseries.iloc[:, 0])
+        previous_initial_hourly_timeseries = previous_initial_hourly_timeseries.set_index('datetime')
+        self.previous_initial_hourly_timeseries = previous_initial_hourly_timeseries
+        self.window_start_index = self.previous_initial_hourly_timeseries.index.hour == app_hours[0]
+        self.window_index = (self.previous_initial_hourly_timeseries.index.hour >= app_hours[0] + 1) & \
+                            (self.previous_initial_hourly_timeseries.index.hour <= app_hours[1] + 1)
+        self.window_end_index = self.previous_initial_hourly_timeseries.index.hour == app_hours[1]
 
     def set_NSR_user_constraints(self):
         # Create user constraints based on resource hours and regulation scenario
-        NSR_contraint_output = self.output.copy(deep=True).reset_index(drop=True)
+        NSR_contraint_output = self.previous_initial_hourly_timeseries.copy(deep=True).reset_index(drop=True)
 
         if self.regulation_scenario == 1:  # ENERGY reservations based on resource hours & service prices
             # TODO: account for different ch/disch, and CHARGING EFFICIENCY
-            NSR_contraint_output.loc[self.window_index, "chgMin_kW"] = - 1
-            NSR_contraint_output.loc[self.window_index, "chgMax_kW"] = 1
-            NSR_contraint_output.loc[self.window_index, "eMin_kWh"] = \
+            NSR_contraint_output.loc[self.window_index, "Power Min (kW)"] = - 1
+            NSR_contraint_output.loc[self.window_index, "Power Max (kW)"] = 1
+            NSR_contraint_output.loc[self.window_index, "Energy Min (kWh)"] = \
                 self.battery_energy_rated * self.min_soc + self.battery_charging_power_max  # TODO: why not +discharge?
-            NSR_contraint_output.loc[self.window_index, "eMax_kWh"] = \
+            NSR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = \
                 self.battery_energy_rated * self.max_soc - self.battery_charging_power_max * self.round_trip_efficiency  # TODO: why -?
 
             # Calculate NSR values
@@ -161,10 +164,10 @@ class ConstraintObject:
                          prebvious_outputs_copy['Non-spinning Reserve (Charging) (kW)'] * self.round_trip_efficiency
 
             # Update constraints in the output
-            NSR_contraint_output.loc[self.window_index, "chgMin_kW"] = charging_min.loc[self.window_index]
-            NSR_contraint_output.loc[self.window_index, "chgMax_kW"] = charging_max.loc[self.window_index]
-            NSR_contraint_output.loc[self.window_index, "eMin_kWh"] = energy_min.loc[self.window_index]
-            NSR_contraint_output.loc[self.window_index, "eMax_kWh"] = energy_max.loc[self.window_index]
+            NSR_contraint_output.loc[self.window_index, "Power Min (kW)"] = charging_min.loc[self.window_index]
+            NSR_contraint_output.loc[self.window_index, "Power Max (kW)"] = charging_max.loc[self.window_index]
+            NSR_contraint_output.loc[self.window_index, "Energy Min (kWh)"] = energy_min.loc[self.window_index]
+            NSR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = energy_max.loc[self.window_index]
 
             # Calculate NSR values
             previous_outputs_values = prebvious_outputs_copy["NSR Price Signal ($/kW)"] * \
@@ -177,10 +180,10 @@ class ConstraintObject:
 
         # Create a new hourly timeseries dataframe as the Scenario time series file for a new SV run
         new_hourly_timeseries = self.previous_initial_hourly_timeseries.copy(deep=True)
-        new_hourly_timeseries['Power Min (kW)'] = np.array(NSR_contraint_output['chgMin_kW'])
-        new_hourly_timeseries['Power Max (kW)'] = np.array(NSR_contraint_output['chgMax_kW'])
-        new_hourly_timeseries['Energy Max (kWh)'] = np.array(NSR_contraint_output['eMax_kWh'])
-        new_hourly_timeseries['Energy Min (kWh)'] = np.array(NSR_contraint_output['eMin_kWh'])
+        new_hourly_timeseries['Power Min (kW)'] = np.array(NSR_contraint_output['Power Min (kW)'])
+        new_hourly_timeseries['Power Max (kW)'] = np.array(NSR_contraint_output['Power Max (kW)'])
+        new_hourly_timeseries['Energy Max (kWh)'] = np.array(NSR_contraint_output['Energy Max (kWh)'])
+        new_hourly_timeseries['Energy Min (kWh)'] = np.array(NSR_contraint_output['Power Min (kW)'])
 
         new_shortname = "runID{}_constraintNSR_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
                                                                     self.app_hours[0], self.app_hours[1])
@@ -188,7 +191,7 @@ class ConstraintObject:
         new_svrun_params = copy.deepcopy(old_svrun_params)
         new_svrun_params['NSR_active'] = "no"
         for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
-                  'Results_label', 'Results_errors_log_path']:
+                  'Results_label', 'Results_errors_log_path', 'User_active', 'User_price']:
             new_svrun_params.pop(k, None)
         new_hourly_timeseries_path = self.runID_result_folder_path + \
                                      "/_new_hourly_timeseries_{}.csv".format(new_shortname)
@@ -200,15 +203,15 @@ class ConstraintObject:
         """create user constraints for spinning reserve within window defined by resHour
       according to the logic of the regScenario """
         # Create user constraints based on resource hours and regulation scenario
-        SR_contraint_output = self.output.copy(deep=True).reset_index(drop=True)
+        SR_contraint_output = self.previous_initial_hourly_timeseries.copy(deep=True).reset_index(drop=True)
 
         if self.regulation_scenario == 1:  # ENERGY reservations based on resource hours & service prices
             # TODO: account for different ch/disch, and CHARGING EFFICIENCY
-            SR_contraint_output.loc[self.window_index, "chgMin_kW"] = - 1
-            SR_contraint_output.loc[self.window_index, "chgMax_kW"] = 1
-            SR_contraint_output.loc[self.window_index, "eMin_kWh"] = \
+            SR_contraint_output.loc[self.window_index, "Power Min (kW)"] = - 1
+            SR_contraint_output.loc[self.window_index, "Power Max (kW)"] = 1
+            SR_contraint_output.loc[self.window_index, "Energy Min (kWh)"] = \
                 self.battery_energy_rated * self.min_soc + self.battery_charging_power_max  # TODO: why not +discharge?
-            SR_contraint_output.loc[self.window_index, "eMax_kWh"] = \
+            SR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = \
                 self.battery_energy_rated * self.max_soc - self.battery_charging_power_max * self.round_trip_efficiency  # TODO: why -?
 
             # Calculate NSR values
@@ -224,21 +227,23 @@ class ConstraintObject:
                    prebvious_outputs_copy['Spinning Reserve (Charging) (kW)']) >= self.battery_charging_power_max * 2
             prebvious_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] = \
                 prebvious_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] - 1
+            sel2 = prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'] > self.battery_discharging_power_max
+            prebvious_outputs_copy.loc[sel2, 'Spinning Reserve (Discharging) (kW)'] = self.battery_discharging_power_max
 
-            charging_min = - 1 * (self.battery_discharging_power_max -
-                                  prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'])
+            charging_min = SR_contraint_output["Power Min (kW)"]
             charging_max = self.battery_charging_power_max - \
-                           prebvious_outputs_copy['Spinning Reserve (Charging) (kW)']
+                           prebvious_outputs_copy['Spinning Reserve (Charging) (kW)'] - \
+                           prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)']
             energy_min = self.battery_energy_rated * self.min_soc + \
                          prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)']
             energy_max = self.battery_energy_rated * self.max_soc - \
                          prebvious_outputs_copy['Spinning Reserve (Charging) (kW)'] * self.round_trip_efficiency
 
             # Update constraints in the output
-            SR_contraint_output.loc[self.window_index, "chgMin_kW"] = charging_min.loc[self.window_index]
-            SR_contraint_output.loc[self.window_index, "chgMax_kW"] = charging_max.loc[self.window_index]
-            SR_contraint_output.loc[self.window_index, "eMin_kWh"] = energy_min.loc[self.window_index]
-            SR_contraint_output.loc[self.window_index, "eMax_kWh"] = energy_max.loc[self.window_index]
+            SR_contraint_output.loc[self.window_index, "Power Min (kW)"] = charging_min.loc[self.window_index]
+            SR_contraint_output.loc[self.window_index, "Power Max (kW)"] = charging_max.loc[self.window_index]
+            SR_contraint_output.loc[self.window_index, "Energy Min (kWh)"] = energy_min.loc[self.window_index]
+            SR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = energy_max.loc[self.window_index]
 
             # Calculate NSR values
             previous_outputs_values = prebvious_outputs_copy["SR Price Signal ($/kW)"] * \
@@ -251,10 +256,10 @@ class ConstraintObject:
 
         # Create a new hourly timeseries dataframe as the Scenario time series file for a new SV run
         new_hourly_timeseries = self.previous_initial_hourly_timeseries.copy(deep=True)
-        new_hourly_timeseries['Power Min (kW)'] = np.array(SR_contraint_output['chgMin_kW'])
-        new_hourly_timeseries['Power Max (kW)'] = np.array(SR_contraint_output['chgMax_kW'])
-        new_hourly_timeseries['Energy Max (kWh)'] = np.array(SR_contraint_output['eMax_kWh'])
-        new_hourly_timeseries['Energy Min (kWh)'] = np.array(SR_contraint_output['eMin_kWh'])
+        new_hourly_timeseries['Power Min (kW)'] = np.array(SR_contraint_output['Power Min (kW)'])
+        new_hourly_timeseries['Power Max (kW)'] = np.array(SR_contraint_output['Power Max (kW)'])
+        new_hourly_timeseries['Energy Max (kWh)'] = np.array(SR_contraint_output['Energy Max (kWh)'])
+        new_hourly_timeseries['Energy Min (kWh)'] = np.array(SR_contraint_output['Energy Min (kWh)'])
 
         new_shortname = "runID{}_constraintSR_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
                                                                    self.app_hours[0], self.app_hours[1])
@@ -262,7 +267,7 @@ class ConstraintObject:
         new_svrun_params = copy.deepcopy(old_svrun_params)
         new_svrun_params['SR_active'] = "no"
         for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
-                    'Results_label', 'Results_errors_log_path']:
+                  'Results_label', 'Results_errors_log_path', 'User_active', 'User_price']:
             new_svrun_params.pop(k, None)
         new_hourly_timeseries_path = self.runID_result_folder_path + \
                                      "/_new_hourly_timeseries_{}.csv".format(new_shortname)
@@ -274,7 +279,7 @@ class ConstraintObject:
         """create user constraints for frequency regulation within window defined by resHour
       according to the logic of the regScenario """
         # Create user constraints based on resource hours and regulation scenario
-        FR_contraint_output = self.output.copy(deep=True).reset_index(drop=True)
+        FR_contraint_output = self.previous_initial_hourly_timeseries.copy(deep=True).reset_index(drop=True)
 
         # Create user constraints based on resource hours and regulation scenario
         if self.regulation_scenario == 1:  # ENERGY reservations based on resource hours & service prices
@@ -301,11 +306,19 @@ class ConstraintObject:
             energy_min = self.battery_energy_rated * self.min_soc + \
                          self.previous_outputs['FR Energy Throughput (kWh)'] - charging_max
 
+            # avoid infeasibility
+            sel = (energy_min + energy_max) >= self.battery_charging_power_max * 2  # both at max
+            energy_min.loc[sel] = energy_min.loc[sel] - 1
+            sel2 = (energy_min + energy_max) <= self.battery_charging_power_max * -2  # both at min
+            energy_max.loc[sel2] = energy_max.loc[sel2] + 1
+            sel3 = energy_max - energy_min < 1e-4  # somehow they're still equal
+            energy_min.loc[sel3] = energy_min.loc[sel3] - 1
+
             # Update constraints in the output
-            FR_contraint_output.loc[self.window_index, "chgMin_kW"] = charging_min.loc[self.window_index]
-            FR_contraint_output.loc[self.window_index, "chgMax_kW"] = charging_max.loc[self.window_index]
-            FR_contraint_output.loc[self.window_index, "eMin_kWh"] = energy_min.loc[self.window_index]
-            FR_contraint_output.loc[self.window_index, "eMax_kWh"] = energy_max.loc[self.window_index]
+            FR_contraint_output.loc[self.window_index, "Power Min (kW)"] = charging_min.loc[self.window_index]
+            FR_contraint_output.loc[self.window_index, "Power Max (kW)"] = charging_max.loc[self.window_index]
+            FR_contraint_output.loc[self.window_index, "Energy Min (kWh)"] = energy_min.loc[self.window_index]
+            FR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = energy_max.loc[self.window_index]
 
             # Calculate FR values
             previous_outputs_values = ((self.previous_outputs.loc[:, "FR Energy Settlement Price Signal ($/kWh)"] *
@@ -324,10 +337,10 @@ class ConstraintObject:
 
         # Create a new hourly timeseries dataframe as the Scenario time series file for a new SV run
         new_hourly_timeseries = self.previous_initial_hourly_timeseries.copy(deep=True)
-        new_hourly_timeseries['Power Min (kW)'] = np.array(FR_contraint_output['chgMin_kW'])
-        new_hourly_timeseries['Power Max (kW)'] = np.array(FR_contraint_output['chgMax_kW'])
-        new_hourly_timeseries['Energy Max (kWh)'] = np.array(FR_contraint_output['eMax_kWh'])
-        new_hourly_timeseries['Energy Min (kWh)'] = np.array(FR_contraint_output['eMin_kWh'])
+        new_hourly_timeseries['Power Min (kW)'] = np.array(FR_contraint_output['Power Min (kW)'])
+        new_hourly_timeseries['Power Max (kW)'] = np.array(FR_contraint_output['Power Max (kW)'])
+        new_hourly_timeseries['Energy Max (kWh)'] = np.array(FR_contraint_output['Energy Max (kWh)'])
+        new_hourly_timeseries['Energy Min (kWh)'] = np.array(FR_contraint_output['Energy Min (kWh)'])
 
         new_shortname = "runID{}_constraintFR_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
                                                                    self.app_hours[0], self.app_hours[1])
@@ -335,7 +348,7 @@ class ConstraintObject:
         new_svrun_params = copy.deepcopy(old_svrun_params)
         new_svrun_params['FR_active'] = "no"
         for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
-                    'Results_label', 'Results_errors_log_path']:
+                  'Results_label', 'Results_errors_log_path', 'User_active', 'User_price']:
             new_svrun_params.pop(k, None)
         new_hourly_timeseries_path = self.runID_result_folder_path + \
                                      "/_new_hourly_timeseries_{}.csv".format(new_shortname)
@@ -348,7 +361,7 @@ class ConstraintObject:
       according to the logic of the regScenario """
         # Create user constraints based on resource hours and regulation scenario
         new_hourly_timeseries = self.previous_initial_hourly_timeseries.copy(deep=True)
-        new_hourly_timeseries.set_index(self.output.index)
+        new_hourly_timeseries.set_index(self.previous_initial_hourly_timeseries.index)
 
         new_hourly_timeseries['Power Min (kW)'] = - self.battery_charging_power_max  # TODO: why?
         new_hourly_timeseries['Power Max (kW)'] = self.battery_charging_power_max  # TODO: why?
@@ -385,7 +398,7 @@ class ConstraintObject:
         new_svrun_params = copy.deepcopy(old_svrun_params)
         new_svrun_params['RA_active'] = "no"
         for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
-                    'Results_label', 'Results_errors_log_path']:
+                  'Results_label', 'Results_errors_log_path', 'User_active', 'User_price']:
             new_svrun_params.pop(k, None)
         new_hourly_timeseries_path = self.runID_result_folder_path + \
                                      "/_new_hourly_timeseries_{}.csv".format(new_shortname)
