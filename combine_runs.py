@@ -5,74 +5,97 @@ This function generates the inputs for a run that combines
 constraints from multiple runs according to the given inputs.
 It then runs StorageVET.
 
-Zhenhua Zhang Jan 16 2021
+Zhenhua Zhang Jan 27 2021
 """
 
 import pandas as pd
 import numpy as np
-import copy
 
 from vc_wrap import SvetObject
 
 
-def combine_runs(SVet_absolute_path, baseline_svetobject, app_types, app_hours, regulation_scenario):
-    """This function takes as input the type of regulatory scenario desired and three
-  pieces of information regarding each run used to make the combined run:
-
-    the resource type: [“NSR”,”SR”,”RA0”,”FR”]
-    the hours in which a resource is given priority [[6,16], [16,23]]
-    the regulation scenario for reach resource type: [1, 3, 3]
-
-    It uses this information to run StorageVET with the desired combination of storage value stacking"""
-
-    # Check that app_types, and app_hours and regulation_scenario are the same length
-    if all(len(lst) == len(regulation_scenario) for lst in [app_types, app_hours]):
-        pass
-    else:
-        raise ValueError("Wrong input list length for combine_runs")
-
-    # Check for overlap in app_hours & that each element has length 2
-    if all(len(lst) == 2 for lst in app_hours) & (sum(app_hours, []) == sorted(sum(app_hours, []))):
-        pass
-    else:
-        raise ValueError("Wrong input resource hours for combine_runs")
-
-    # Check if app_types contain valid options
-    if all(i in ["NSR", "SR", "RA0", "FR"] for i in app_types):
-        pass
-    else:
-        raise ValueError("Wrong input resource types for combine_runs")
-
-    # Iterate through each resource type
-    new_svet_object = baseline_svetobject
-    for i in range(len(app_types)):
-        new_constraint_object = ConstraintObject(SvetObject=new_svet_object, app_hours=app_hours[i],
-                                                 regulation_scenario=regulation_scenario[i])
-        constraint_function = getattr(new_constraint_object, "set_" + app_types[i] + "_user_constraints")
-        old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, values = constraint_function()
-        new_svet_object = SvetObject(SVet_absolute_path=SVet_absolute_path,
-                                     shortname=new_shortname,
-                                     description="run #{}".format(i),
-                                     Scenario_time_series_filename=new_hourly_timeseries_path,
-                                     User_active="yes", User_price=values,
-                                     **new_svrun_params)
-        print(i, "values ", values)
-
-    return print("Combine runs has been completed")
+# def combine_runs(SVet_absolute_path, baseline_svetobject, app_types, app_hours, regulation_scenario):
+#     """This function takes as input the type of regulatory scenario desired and three
+#   pieces of information regarding each run used to make the combined run:
+#
+#     the resource type: [“NSR”,”SR”,”RA0”,”FR”]
+#     the hours in which a resource is given priority [[6,16], [16,23]]
+#     the regulation scenario for reach resource type: [1, 3, 3]
+#
+#     It uses this information to run StorageVET with the desired combination of storage value stacking"""
+#
+#     # Check that app_types, and app_hours and regulation_scenario are the same length
+#     if all(len(lst) == len(regulation_scenario) for lst in [app_types, app_hours]):
+#         pass
+#     else:
+#         raise ValueError("Wrong input list length for combine_runs")
+#
+#     # Check for overlap in app_hours & that each element has length 2
+#     if all(len(lst) == 2 for lst in app_hours) & (sum(app_hours, []) == sorted(sum(app_hours, []))):
+#         pass
+#     else:
+#         raise ValueError("Wrong input resource hours for combine_runs")
+#
+#     # Check if app_types contain valid options
+#     if all(i in ["NSR", "SR", "RA0", "FR"] for i in app_types):
+#         pass
+#     else:
+#         raise ValueError("Wrong input resource types for combine_runs")
+#
+#     # Iterate through each resource type
+#     new_svet_object = baseline_svetobject
+#     for i in range(len(app_types)):
+#         new_constraint_object = ConstraintObject(SvetObject=new_svet_object, app_hours=app_hours[i],
+#                                                  regulation_scenario=regulation_scenario[i])
+#         constraint_function = getattr(new_constraint_object, "set_" + app_types[i] + "_user_constraints")
+#         old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, values = constraint_function()
+#         new_svet_object = SvetObject(SVet_absolute_path=SVet_absolute_path,
+#                                      shortname=new_shortname,
+#                                      description="run #{}".format(i),
+#                                      Scenario_time_series_filename=new_hourly_timeseries_path,
+#                                      User_active="yes", User_price=values,
+#                                      **new_svrun_params)
+#         print(i, "values ", values)
+#
+#     return print("Combine runs has been completed")
 
 
 class ConstraintObject:
-    def __init__(self, SvetObject, app_hours, regulation_scenario):
-        previous_params = SvetObject.new_params
-        self.previous_runID = SvetObject.runID
-        self.previous_svrun_params = SvetObject.params
+    def __init__(self, SVet_absolute_path, shortname, baseline_runID, app_hours, regulation_scenario):
+        # Specify StorageVET related attributes
+        self.SVet_absolute_path = SVet_absolute_path
+        self.SVet_script = SVet_absolute_path + "run_StorageVET.py"
+        self.default_params_file = SVet_absolute_path + "Model_Parameters_2v1-0-2_default.csv"
+        self.runs_log_file = SVet_absolute_path + "Results/runsLog.csv"
+        self.results_path = SVet_absolute_path + "Results/"
 
-        previous_initial_hourly_timeseries = SvetObject.initial_hourly_timeseries
-        self.runID_result_folder_path = SvetObject.runID_result_folder_path
-
-        # Load constraint parameters
+        # Load user constraint parameters
         self.app_hours = app_hours
         self.regulation_scenario = regulation_scenario
+
+        # Specify attributes for the baseline run
+        self.previous_runID = baseline_runID
+        self.runID_result_folder_path = self.results_path + "output_run" + self.previous_runID + "_" + shortname
+        self.runID_param_path = self.runID_result_folder_path + "/params_run" + self.previous_runID + ".csv"
+        self.runID_dispatch_timeseries_path = self.runID_result_folder_path + \
+                                              "/timeseries_results_runID" + self.previous_runID + ".csv"
+        previous_params = pd.read_csv(self.runID_param_path)
+        self.previous_params = previous_params
+
+        # Read baseline hourly timeseries file
+        previous_initial_hourly_timeseries = pd.read_csv(self.runID_result_folder_path +
+                                                         "/_initial_hourly_timeseries_runID{}.csv"
+                                                         .format(self.previous_runID))
+        previous_initial_hourly_timeseries['datetime'] = pd.to_datetime(previous_initial_hourly_timeseries.iloc[:, 0])
+        previous_initial_hourly_timeseries = previous_initial_hourly_timeseries.set_index('datetime')
+        self.previous_initial_hourly_timeseries = previous_initial_hourly_timeseries
+
+        # Read baseline dispatch results
+        previous_outputs = pd.read_csv(self.runID_dispatch_timeseries_path)
+        previous_outputs['datetime'] = pd.to_datetime(previous_outputs.iloc[:, 0])
+        previous_outputs_datetime = previous_outputs['datetime']
+        previous_outputs.set_index('datetime')
+        self.previous_outputs = previous_outputs
 
         # Load general parameters from previous runID results
         self.battery_charging_power_max = float(previous_params.loc[(previous_params['Tag'] == 'Battery') &
@@ -101,13 +124,6 @@ class ConstraintObject:
         self.RA_length = float(previous_params.loc[(previous_params['Tag'] == 'RA') &
                                                    (previous_params['Key'] == 'length'), 'Value'].values[0])
 
-        # Load previous dispatched results from the runID folder
-        previous_outputs = pd.read_csv(SvetObject.runID_dispatch_timeseries_path)
-        previous_outputs['datetime'] = pd.to_datetime(previous_outputs.iloc[:, 0])
-        previous_outputs_datetime = previous_outputs['datetime']
-        previous_outputs.set_index('datetime')
-        self.previous_outputs = previous_outputs
-
         # Initialize a constraint object
         # new_hourly_timeseries = pd.DataFrame(index=pd.to_datetime(self.previous_initial_hourly_timeseries.iloc[:, 0]),
         #                                      columns=["chgMin_kW", "chgMax_kW", "eMin_kWh", "eMax_kWh"])
@@ -118,13 +134,15 @@ class ConstraintObject:
         # self.new_hourly_timeseries = new_hourly_timeseries
 
         # Determine indexes
-        previous_initial_hourly_timeseries['datetime'] = pd.to_datetime(previous_initial_hourly_timeseries.iloc[:, 0])
-        previous_initial_hourly_timeseries = previous_initial_hourly_timeseries.set_index('datetime')
-        self.previous_initial_hourly_timeseries = previous_initial_hourly_timeseries
         self.window_start_index = self.previous_initial_hourly_timeseries.index.hour == app_hours[0]
         self.window_index = (self.previous_initial_hourly_timeseries.index.hour >= app_hours[0] + 1) & \
                             (self.previous_initial_hourly_timeseries.index.hour <= app_hours[1] + 1)
-        self.window_end_index = self.previous_initial_hourly_timeseries.index.hour == app_hours[1]
+        self.window_end_index = self.previous_initial_hourly_timeseries.index.hour == app_hours[1] + 1
+
+        # Initialize user constraint values
+        self.new_shortname = str()
+        self.new_hourly_timeseries_path = str()
+        self.values = 0
 
     def set_NSR_user_constraints(self):
         # Create user constraints based on resource hours and regulation scenario
@@ -184,20 +202,16 @@ class ConstraintObject:
         new_hourly_timeseries['Power Max (kW)'] = np.array(NSR_contraint_output['Power Max (kW)'])
         new_hourly_timeseries['Energy Max (kWh)'] = np.array(NSR_contraint_output['Energy Max (kWh)'])
         new_hourly_timeseries['Energy Min (kWh)'] = np.array(NSR_contraint_output['Power Min (kW)'])
-
         new_shortname = "runID{}_constraintNSR_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
                                                                     self.app_hours[0], self.app_hours[1])
-        old_svrun_params = self.previous_svrun_params
-        new_svrun_params = copy.deepcopy(old_svrun_params)
-        new_svrun_params['NSR_active'] = "no"
-        for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
-                  'Results_label', 'Results_errors_log_path', 'User_active', 'User_price']:
-            new_svrun_params.pop(k, None)
         new_hourly_timeseries_path = self.runID_result_folder_path + \
                                      "/_new_hourly_timeseries_{}.csv".format(new_shortname)
         new_hourly_timeseries.to_csv(new_hourly_timeseries_path, index=False)
 
-        return old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, NSR_values
+        # Update attributes
+        self.new_shortname = new_shortname
+        self.new_hourly_timeseries_path = new_hourly_timeseries_path
+        self.values = NSR_values
 
     def set_SR_user_constraints(self):
         """create user constraints for spinning reserve within window defined by resHour
@@ -259,21 +273,17 @@ class ConstraintObject:
         new_hourly_timeseries['Power Min (kW)'] = np.array(SR_contraint_output['Power Min (kW)'])
         new_hourly_timeseries['Power Max (kW)'] = np.array(SR_contraint_output['Power Max (kW)'])
         new_hourly_timeseries['Energy Max (kWh)'] = np.array(SR_contraint_output['Energy Max (kWh)'])
-        new_hourly_timeseries['Energy Min (kWh)'] = np.array(SR_contraint_output['Energy Min (kWh)'])
-
+        new_hourly_timeseries['Energy Min (kWh)'] = np.array(SR_contraint_output['Power Min (kW)'])
         new_shortname = "runID{}_constraintSR_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
                                                                    self.app_hours[0], self.app_hours[1])
-        old_svrun_params = self.previous_svrun_params
-        new_svrun_params = copy.deepcopy(old_svrun_params)
-        new_svrun_params['SR_active'] = "no"
-        for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
-                  'Results_label', 'Results_errors_log_path', 'User_active', 'User_price']:
-            new_svrun_params.pop(k, None)
         new_hourly_timeseries_path = self.runID_result_folder_path + \
                                      "/_new_hourly_timeseries_{}.csv".format(new_shortname)
         new_hourly_timeseries.to_csv(new_hourly_timeseries_path, index=False)
 
-        return old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, SR_values
+        # Update attributes
+        self.new_shortname = new_shortname
+        self.new_hourly_timeseries_path = new_hourly_timeseries_path
+        self.values = SR_values
 
     def set_FR_user_constraints(self):
         """create user constraints for frequency regulation within window defined by resHour
@@ -340,21 +350,17 @@ class ConstraintObject:
         new_hourly_timeseries['Power Min (kW)'] = np.array(FR_contraint_output['Power Min (kW)'])
         new_hourly_timeseries['Power Max (kW)'] = np.array(FR_contraint_output['Power Max (kW)'])
         new_hourly_timeseries['Energy Max (kWh)'] = np.array(FR_contraint_output['Energy Max (kWh)'])
-        new_hourly_timeseries['Energy Min (kWh)'] = np.array(FR_contraint_output['Energy Min (kWh)'])
-
+        new_hourly_timeseries['Energy Min (kWh)'] = np.array(FR_contraint_output['Power Min (kW)'])
         new_shortname = "runID{}_constraintFR_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
                                                                    self.app_hours[0], self.app_hours[1])
-        old_svrun_params = self.previous_svrun_params
-        new_svrun_params = copy.deepcopy(old_svrun_params)
-        new_svrun_params['FR_active'] = "no"
-        for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
-                  'Results_label', 'Results_errors_log_path', 'User_active', 'User_price']:
-            new_svrun_params.pop(k, None)
         new_hourly_timeseries_path = self.runID_result_folder_path + \
                                      "/_new_hourly_timeseries_{}.csv".format(new_shortname)
         new_hourly_timeseries.to_csv(new_hourly_timeseries_path, index=False)
 
-        return old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, FR_values
+        # Update attributes
+        self.new_shortname = new_shortname
+        self.new_hourly_timeseries_path = new_hourly_timeseries_path
+        self.values = FR_values
 
     def set_RA0_user_constraints(self, RA_monthly_values_per_kW=5):
         """create user constraints for RA dispmode 0 within window defined by resHour
@@ -394,14 +400,11 @@ class ConstraintObject:
         # Create a new hourly timeseries dataframe as the Scenario time series file for a new SV run
         new_shortname = "runID{}_constraintRA0_rs{}_hr{}-{}".format(self.previous_runID, self.regulation_scenario,
                                                                     self.app_hours[0], self.app_hours[1])
-        old_svrun_params = self.previous_svrun_params
-        new_svrun_params = copy.deepcopy(old_svrun_params)
-        new_svrun_params['RA_active'] = "no"
-        for k in ['Scenario_time_series_filename', 'Results_dir_absolute_path',
-                  'Results_label', 'Results_errors_log_path', 'User_active', 'User_price']:
-            new_svrun_params.pop(k, None)
         new_hourly_timeseries_path = self.runID_result_folder_path + \
                                      "/_new_hourly_timeseries_{}.csv".format(new_shortname)
         new_hourly_timeseries.to_csv(new_hourly_timeseries_path, index=False)
 
-        return old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, RA_values
+        # Update attributes
+        self.new_shortname = new_shortname
+        self.new_hourly_timeseries_path = new_hourly_timeseries_path
+        self.values = RA_values
