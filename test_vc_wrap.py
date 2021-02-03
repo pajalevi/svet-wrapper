@@ -1,6 +1,5 @@
-from vc_wrap_v2 import SvetObject
+from vc_wrap import SvetObject
 
-# Create a storagevet object
 test = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
                   shortname="test_run",
                   description="test run",
@@ -15,6 +14,4 @@ test = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-m
                   FR_CombinedMarket="0"
                   )
 
-# Test if storagevet can run
-test.run_storagevet()
-print(test.runID, test.argument_list)
+print(test.runID_param_path)

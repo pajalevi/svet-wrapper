@@ -1,4 +1,4 @@
-from vc_wrap_v2 import SvetObject
+from vc_wrap import SvetObject
 from combine_runs import ConstraintObject, combine_runs
 
 # First, run the baseline scenario
