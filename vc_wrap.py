@@ -26,7 +26,7 @@ class SvetObject:
     def __init__(self, SVet_absolute_path, description, shortname, **params):
         self.SVet_absolute_path = SVet_absolute_path
         self.SVet_script = SVet_absolute_path + "run_StorageVET.py"
-        self.default_params_file = SVet_absolute_path + "Model_Parameters_2v1-0-2_default_updated.csv"
+        self.default_params_file = SVet_absolute_path + "Model_Parameters_2v1-0-2_default.csv"
         self.runs_log_file = SVet_absolute_path + "Results/runsLog.csv"
         self.results_path = SVet_absolute_path + "Results/"
 
@@ -53,7 +53,6 @@ class SvetObject:
         self.runID_param_path = self.runID_result_folder_path + "/params_run" + self.runID + ".csv"
         self.runID_dispatch_timeseries_path = self.runID_result_folder_path + \
                                               "/timeseries_results_runID" + self.runID + ".csv"
-        # PL: seems like the above variable is not used? As well, is self.new_params used?
         self.new_params = setup_param_csv(self.params, self.default_params_file, self.runID,
                                           self.runID_result_folder_path, self.runID_param_path)
         # TODO: add npv or payback file path here if needed
