@@ -18,9 +18,6 @@ import subprocess
 import datetime
 import shutil
 
-from proforma_update import update_financial_results
-
-pd.options.mode.chained_assignment = None
 
 class SvetObject:
     def __init__(self, SVet_absolute_path, description, shortname, **params):
@@ -166,15 +163,6 @@ def run_storagevet(SVet_script, runs_log_file, runID, runID_result_folder_path, 
     for f in os.listdir(runID_result_folder_path + "/"):
         all_file_name += str(f)
     status = "ERROR" if 'npv' not in all_file_name else "COMPLETED"
-
-    # Update npv and proforma results
-    if status == "COMPLETED":
-        proforma_old = pd.read_csv(runID_result_folder_path + "/pro_forma_runID" + runID + ".csv")
-        npv_old = pd.read_csv(runID_result_folder_path + "/npv_runID" + runID + ".csv")
-        proforma_new, npv_new = update_financial_results(proforma_old, npv_old,
-                                                         discount_rate=0.1, growth_rate=0.03)
-        proforma_new.to_csv(runID_result_folder_path + "/_new_pro_forma_runID" + runID + ".csv", index=False)
-        npv_new.to_csv(runID_result_folder_path + "/_new_npv_runID" + runID + ".csv", index=False)
 
     # Save status to runlogs, remove entry and folder in cases of failure
     # if status == "ERROR":
