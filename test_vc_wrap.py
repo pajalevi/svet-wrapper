@@ -1,4 +1,4 @@
-from vc_wrap_v2 import SvetObject
+from vc_wrap import SvetObject
 
 # Create a storagevet object
 test = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",

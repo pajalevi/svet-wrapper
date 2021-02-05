@@ -5,7 +5,7 @@ This function generates the inputs for a run that combines
 constraints from multiple runs according to the given inputs.
 It then runs StorageVET.
 
-Zhenhua Zhang Jan 27 2021
+Zhenhua Zhang Jan 27 2021, last updated on Feb 4 2021
 """
 
 import pandas as pd
@@ -14,54 +14,68 @@ import numpy as np
 from vc_wrap import SvetObject
 
 
-# def combine_runs(SVet_absolute_path, baseline_svetobject, app_types, app_hours, regulation_scenario):
-#     """This function takes as input the type of regulatory scenario desired and three
-#   pieces of information regarding each run used to make the combined run:
-#
-#     the resource type: [“NSR”,”SR”,”RA0”,”FR”]
-#     the hours in which a resource is given priority [[6,16], [16,23]]
-#     the regulation scenario for reach resource type: [1, 3, 3]
-#
-#     It uses this information to run StorageVET with the desired combination of storage value stacking"""
-#
-#     # Check that app_types, and app_hours and regulation_scenario are the same length
-#     if all(len(lst) == len(regulation_scenario) for lst in [app_types, app_hours]):
-#         pass
-#     else:
-#         raise ValueError("Wrong input list length for combine_runs")
-#
-#     # Check for overlap in app_hours & that each element has length 2
-#     if all(len(lst) == 2 for lst in app_hours) & (sum(app_hours, []) == sorted(sum(app_hours, []))):
-#         pass
-#     else:
-#         raise ValueError("Wrong input resource hours for combine_runs")
-#
-#     # Check if app_types contain valid options
-#     if all(i in ["NSR", "SR", "RA0", "FR"] for i in app_types):
-#         pass
-#     else:
-#         raise ValueError("Wrong input resource types for combine_runs")
-#
-#     # Iterate through each resource type
-#     new_svet_object = baseline_svetobject
-#     for i in range(len(app_types)):
-#         new_constraint_object = ConstraintObject(SvetObject=new_svet_object, app_hours=app_hours[i],
-#                                                  regulation_scenario=regulation_scenario[i])
-#         constraint_function = getattr(new_constraint_object, "set_" + app_types[i] + "_user_constraints")
-#         old_svrun_params, new_svrun_params, new_shortname, new_hourly_timeseries_path, values = constraint_function()
-#         new_svet_object = SvetObject(SVet_absolute_path=SVet_absolute_path,
-#                                      shortname=new_shortname,
-#                                      description="run #{}".format(i),
-#                                      Scenario_time_series_filename=new_hourly_timeseries_path,
-#                                      User_active="yes", User_price=values,
-#                                      **new_svrun_params)
-#         print(i, "values ", values)
-#
-#     return print("Combine runs has been completed")
+def combine_runs(SVet_absolute_path, description, shortname, app_types, app_hours, regulation_scenario,
+                 **argument_list):
+    """This function takes as input the type of regulatory scenario desired and three
+  pieces of information regarding each run used to make the combined run:
+
+    the resource type: [“NSR”,”SR”,”RA0”,”FR”]
+    the hours in which a resource is given priority [[6,16], [16,23]]
+    the regulation scenario for reach resource type: [1, 3, 3]
+
+    It uses this information to run StorageVET with the desired combination of storage value stacking"""
+
+    # Check that app_types, and app_hours and regulation_scenario are the same length
+    if all(len(lst) == len(regulation_scenario) for lst in [app_types, app_hours]):
+        pass
+    else:
+        raise ValueError("Wrong input list length for combine_runs")
+
+    # Check for overlap in app_hours & that each element has length 2
+    if all(len(lst) == 2 for lst in app_hours) & (sum(app_hours, []) == sorted(sum(app_hours, []))):
+        pass
+    else:
+        raise ValueError("Wrong input resource hours for combine_runs")
+
+    # Check if app_types contain valid options
+    if all(i in ["NSR", "SR", "RA0", "FR"] for i in app_types):
+        pass
+    else:
+        raise ValueError("Wrong input resource types for combine_runs")
+
+    # Iterate through each resource type
+    baseline = SvetObject(SVet_absolute_path=SVet_absolute_path,
+                          shortname=shortname,
+                          description=description,
+                          **argument_list)
+    baseline.run_storagevet()
+    new_svet_object = baseline
+    for i in range(len(app_types)):
+        constraint_init = True if i == 0 else False
+        new_constraint_object = ConstraintObject(SVet_absolute_path=SVet_absolute_path,
+                                                 shortname=new_svet_object.shortname,
+                                                 baseline_runID=new_svet_object.runID,
+                                                 app_hours=app_hours[i],
+                                                 regulation_scenario=regulation_scenario[i],
+                                                 constraint_init=constraint_init)
+        getattr(new_constraint_object, "set_" + app_types[i] + "_user_constraints")()
+        argument_list[app_types[i] + '_active'] = 'no'
+        argument_list['Scenario_time_series_filename'] = new_constraint_object.new_hourly_timeseries_path
+        print(i, "values ", new_constraint_object.new_shortname,
+              new_constraint_object.values, new_constraint_object.new_hourly_timeseries_path)
+        new_svet_object = SvetObject(SVet_absolute_path=SVet_absolute_path,
+                                     shortname=new_constraint_object.new_shortname,
+                                     description="run #{}".format(i),
+                                     User_active="yes", User_price=new_constraint_object.values,
+                                     **argument_list)
+        new_svet_object.run_storagevet()
+
+    return print("Combine runs has been completed")
 
 
 class ConstraintObject:
-    def __init__(self, SVet_absolute_path, shortname, baseline_runID, app_hours, regulation_scenario):
+    def __init__(self, SVet_absolute_path, shortname, baseline_runID, app_hours, regulation_scenario,
+                 constraint_init=True):
         # Specify StorageVET related attributes
         self.SVet_absolute_path = SVet_absolute_path
         self.SVet_script = SVet_absolute_path + "run_StorageVET.py"
@@ -81,14 +95,6 @@ class ConstraintObject:
                                               "/timeseries_results_runID" + self.previous_runID + ".csv"
         previous_params = pd.read_csv(self.runID_param_path)
         self.previous_params = previous_params
-
-        # Read baseline hourly timeseries file
-        previous_initial_hourly_timeseries = pd.read_csv(self.runID_result_folder_path +
-                                                         "/_initial_hourly_timeseries_runID{}.csv"
-                                                         .format(self.previous_runID))
-        previous_initial_hourly_timeseries['datetime'] = pd.to_datetime(previous_initial_hourly_timeseries.iloc[:, 0])
-        previous_initial_hourly_timeseries = previous_initial_hourly_timeseries.set_index('datetime')
-        self.previous_initial_hourly_timeseries = previous_initial_hourly_timeseries
 
         # Read baseline dispatch results
         previous_outputs = pd.read_csv(self.runID_dispatch_timeseries_path)
@@ -124,14 +130,21 @@ class ConstraintObject:
         self.RA_length = float(previous_params.loc[(previous_params['Tag'] == 'RA') &
                                                    (previous_params['Key'] == 'length'), 'Value'].values[0])
 
-        # Initialize a constraint object
-        # new_hourly_timeseries = pd.DataFrame(index=pd.to_datetime(self.previous_initial_hourly_timeseries.iloc[:, 0]),
-        #                                      columns=["chgMin_kW", "chgMax_kW", "eMin_kWh", "eMax_kWh"])
-        # new_hourly_timeseries.loc[:, "eMin_kWh"] = self.battery_energy_rated * self.min_soc
-        # new_hourly_timeseries.loc[:, "eMax_kWh"] = self.battery_energy_rated * self.max_soc  # TODO: double counted max_soc previously
-        # new_hourly_timeseries.loc[:, "chgMin_kW"] = - self.battery_discharging_power_max
-        # new_hourly_timeseries.loc[:, "chgMax_kW"] = self.battery_charging_power_max
-        # self.new_hourly_timeseries = new_hourly_timeseries
+        # Read baseline hourly timeseries file, initialize the constraints if 1st run
+        previous_initial_hourly_timeseries = pd.read_csv(self.runID_result_folder_path +
+                                                         "/_initial_hourly_timeseries_runID{}.csv"
+                                                         .format(self.previous_runID))
+        previous_initial_hourly_timeseries['datetime'] = pd.to_datetime(previous_initial_hourly_timeseries.iloc[:, 0])
+        previous_initial_hourly_timeseries = previous_initial_hourly_timeseries.set_index('datetime')
+
+        if constraint_init:
+            previous_initial_hourly_timeseries.loc[:, "Energy Min (kWh)"] = self.battery_energy_rated * self.min_soc
+            previous_initial_hourly_timeseries.loc[:, "Energy Max (kWh)"] = self.battery_energy_rated * self.max_soc
+            previous_initial_hourly_timeseries.loc[:, "Power Min (kW)"] = - self.battery_discharging_power_max
+            previous_initial_hourly_timeseries.loc[:, "Power Max (kW)"] = self.battery_charging_power_max
+        else:
+            pass
+        self.previous_initial_hourly_timeseries = previous_initial_hourly_timeseries
 
         # Determine indexes
         self.window_start_index = self.previous_initial_hourly_timeseries.index.hour == app_hours[0]

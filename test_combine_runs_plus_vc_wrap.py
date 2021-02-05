@@ -1,4 +1,4 @@
-from vc_wrap_v2 import SvetObject
+from vc_wrap import SvetObject
 from combine_runs import ConstraintObject
 
 # First, run the baseline scenario
@@ -12,8 +12,7 @@ baseline.run_storagevet()
 # Then, create NSR constraint by passing baseline shortname and runID
 constraint = ConstraintObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
                               shortname=baseline.shortname, baseline_runID=baseline.runID,
-                              app_hours=[14, 20],
-                              regulation_scenario=1)
+                              app_hours=[14, 20], regulation_scenario=1, constraint_init=True)
 constraint.set_NSR_user_constraints()
 print(" ", constraint.new_shortname, constraint.new_hourly_timeseries_path, constraint.values)
 
@@ -28,4 +27,10 @@ second_run = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/Storag
 second_run.run_storagevet()
 # TODO need to explicitly mention the updated argument list - is this helpful/redundant?
 
-# Note: we can actually keep iterating
+# Then, create SR constraint by passing baseline shortname and runID
+# Note: no need to initialize constraints
+constraint = ConstraintObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
+                              shortname=second_run.shortname, baseline_runID=second_run.runID,
+                              app_hours=[22, 23], regulation_scenario=1, constraint_init=False)
+constraint.set_SR_user_constraints()
+print(" ", constraint.new_shortname, constraint.new_hourly_timeseries_path, constraint.values)
