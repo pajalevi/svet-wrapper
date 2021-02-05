@@ -250,12 +250,12 @@ class ConstraintObject:
         elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
             # Avoid infeasibility TODO: understand this
             prebvious_outputs_copy = self.previous_outputs.copy(deep=True)
+            sel2 = prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'] > self.battery_discharging_power_max
+            prebvious_outputs_copy.loc[sel2, 'Spinning Reserve (Discharging) (kW)'] = self.battery_discharging_power_max
             sel = (prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'] +
                    prebvious_outputs_copy['Spinning Reserve (Charging) (kW)']) >= self.battery_charging_power_max * 2
             prebvious_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] = \
                 prebvious_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] - 1
-            sel2 = prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'] > self.battery_discharging_power_max
-            prebvious_outputs_copy.loc[sel2, 'Spinning Reserve (Discharging) (kW)'] = self.battery_discharging_power_max
 
             charging_min = SR_contraint_output["Power Min (kW)"]
             charging_max = self.battery_charging_power_max - \
