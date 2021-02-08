@@ -1,7 +1,8 @@
 from vc_wrap import SvetObject
 
 # Create a storagevet object
-test = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
+test = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/storagevet_dervet/",
+                  default_params_file="Model_Parameters_2v1-0-2_default.csv",
                   shortname="test_run",
                   description="test run",
                   Scenario_time_series_filename="/Applications/storagevet2v101/StorageVET-master-git/Data/hourly_timeseries_2019.csv",

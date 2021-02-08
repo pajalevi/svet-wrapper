@@ -24,11 +24,13 @@ pd.options.mode.chained_assignment = None
 
 
 class SvetObject:
-    def __init__(self, SVet_absolute_path, description, shortname, **argument_list):
+    def __init__(self, SVet_absolute_path, description, shortname,
+                 default_params_file="Model_Parameters_2v1-0-2_default.csv",
+                 **argument_list):
         # Specify StorageVET related params
         self.SVet_absolute_path = SVet_absolute_path
         self.SVet_script = SVet_absolute_path + "run_StorageVET.py"
-        self.default_params_file = SVet_absolute_path + "Model_Parameters_2v1-0-2_default.csv"
+        self.default_params_file = SVet_absolute_path + default_params_file
         self.runs_log_file = SVet_absolute_path + "Results/runsLog.csv"
         self.results_path = SVet_absolute_path + "Results/"
 

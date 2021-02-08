@@ -151,6 +151,8 @@ class ConstraintObject:
         self.window_index = (self.previous_initial_hourly_timeseries.index.hour >= app_hours[0] + 1) & \
                             (self.previous_initial_hourly_timeseries.index.hour <= app_hours[1] + 1)
         self.window_end_index = self.previous_initial_hourly_timeseries.index.hour == app_hours[1] + 1
+        self.non_window_index = (self.previous_initial_hourly_timeseries.index.hour < app_hours[0] + 1) | \
+                                (self.previous_initial_hourly_timeseries.index.hour > app_hours[1] + 1)
 
         # Initialize user constraint values
         self.new_shortname = str()
@@ -177,22 +179,22 @@ class ConstraintObject:
         elif self.regulation_scenario == 2:  # ONE-SIDED reservations based on resource hours
             raise ValueError("regulation_scenario 2 doesn't exist yet for NSR")
         elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
-            # Avoid infeasibility TODO: understand this
-            prebvious_outputs_copy = self.previous_outputs.copy(deep=True)
-            sel = (prebvious_outputs_copy['Non-spinning Reserve (Discharging) (kW)'] +
-                   prebvious_outputs_copy[
+            # Avoid infeasibility
+            previous_outputs_copy = self.previous_outputs.copy(deep=True)
+            sel = (previous_outputs_copy['Non-spinning Reserve (Discharging) (kW)'] +
+                   previous_outputs_copy[
                        'Non-spinning Reserve (Charging) (kW)']) >= self.battery_charging_power_max * 2
-            prebvious_outputs_copy.loc[sel, 'Non-spinning Reserve (Discharging) (kW)'] = \
-                prebvious_outputs_copy.loc[sel, 'Non-spinning Reserve (Discharging) (kW)'] - 1
+            previous_outputs_copy.loc[sel, 'Non-spinning Reserve (Discharging) (kW)'] = \
+                previous_outputs_copy.loc[sel, 'Non-spinning Reserve (Discharging) (kW)'] - 1
 
             charging_min = - 1 * (self.battery_discharging_power_max -
-                                  prebvious_outputs_copy['Non-spinning Reserve (Discharging) (kW)'])
+                                  previous_outputs_copy['Non-spinning Reserve (Discharging) (kW)'])
             charging_max = self.battery_charging_power_max - \
-                           prebvious_outputs_copy['Non-spinning Reserve (Charging) (kW)']
+                           previous_outputs_copy['Non-spinning Reserve (Charging) (kW)']
             energy_min = self.battery_energy_rated * self.min_soc + \
-                         prebvious_outputs_copy['Non-spinning Reserve (Discharging) (kW)']
+                         previous_outputs_copy['Non-spinning Reserve (Discharging) (kW)']
             energy_max = self.battery_energy_rated * self.max_soc - \
-                         prebvious_outputs_copy['Non-spinning Reserve (Charging) (kW)'] * self.round_trip_efficiency
+                         previous_outputs_copy['Non-spinning Reserve (Charging) (kW)'] * self.round_trip_efficiency
 
             # Update constraints in the output
             NSR_contraint_output.loc[self.window_index, "Power Min (kW)"] = charging_min.loc[self.window_index]
@@ -201,9 +203,9 @@ class ConstraintObject:
             NSR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = energy_max.loc[self.window_index]
 
             # Calculate NSR values
-            previous_outputs_values = prebvious_outputs_copy["NSR Price Signal ($/kW)"] * \
-                                      (prebvious_outputs_copy['Non-spinning Reserve (Discharging) (kW)'] +
-                                       prebvious_outputs_copy['Non-spinning Reserve (Charging) (kW)'])
+            previous_outputs_values = previous_outputs_copy["NSR Price Signal ($/kW)"] * \
+                                      (previous_outputs_copy['Non-spinning Reserve (Discharging) (kW)'] +
+                                       previous_outputs_copy['Non-spinning Reserve (Charging) (kW)'])
             NSR_values = sum(previous_outputs_values[self.window_index])
 
         else:
@@ -237,11 +239,11 @@ class ConstraintObject:
             SR_contraint_output.loc[self.window_index, "Power Min (kW)"] = - 1
             SR_contraint_output.loc[self.window_index, "Power Max (kW)"] = 1
             SR_contraint_output.loc[self.window_index, "Energy Min (kWh)"] = \
-                self.battery_energy_rated * self.min_soc + self.battery_charging_power_max  # TODO: why not +discharge?
+                self.battery_energy_rated * self.min_soc + self.battery_charging_power_max # able to discharge
             SR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = \
-                self.battery_energy_rated * self.max_soc - self.battery_charging_power_max * self.round_trip_efficiency  # TODO: why -?
+                self.battery_energy_rated * self.max_soc - self.battery_charging_power_max * self.round_trip_efficiency # save room for charge
 
-            # Calculate NSR values
+            # Calculate SR values
             previous_outputs_values = self.previous_outputs["SR Price Signal ($/kW)"] * self.battery_charging_power_max
             SR_values = sum(previous_outputs_values[self.window_index])
 
@@ -249,22 +251,22 @@ class ConstraintObject:
             raise ValueError("regulation_scenario 2 doesn't exist yet for SR")
         elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
             # Avoid infeasibility TODO: understand this
-            prebvious_outputs_copy = self.previous_outputs.copy(deep=True)
-            sel2 = prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'] > self.battery_discharging_power_max
-            prebvious_outputs_copy.loc[sel2, 'Spinning Reserve (Discharging) (kW)'] = self.battery_discharging_power_max
-            sel = (prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'] +
-                   prebvious_outputs_copy['Spinning Reserve (Charging) (kW)']) >= self.battery_charging_power_max * 2
-            prebvious_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] = \
-                prebvious_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] - 1
+            previous_outputs_copy = self.previous_outputs.copy(deep=True)
+            sel2 = previous_outputs_copy['Spinning Reserve (Discharging) (kW)'] > self.battery_discharging_power_max
+            previous_outputs_copy.loc[sel2, 'Spinning Reserve (Discharging) (kW)'] = self.battery_discharging_power_max
+            sel = (previous_outputs_copy['Spinning Reserve (Discharging) (kW)'] +
+                   previous_outputs_copy['Spinning Reserve (Charging) (kW)']) >= self.battery_charging_power_max * 2
+            previous_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] = \
+                previous_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] - 1
 
             charging_min = SR_contraint_output["Power Min (kW)"]
             charging_max = self.battery_charging_power_max - \
-                           prebvious_outputs_copy['Spinning Reserve (Charging) (kW)'] - \
-                           prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)']
+                           previous_outputs_copy['Spinning Reserve (Charging) (kW)'] - \
+                           previous_outputs_copy['Spinning Reserve (Discharging) (kW)']
             energy_min = self.battery_energy_rated * self.min_soc + \
-                         prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)']
+                         previous_outputs_copy['Spinning Reserve (Discharging) (kW)']
             energy_max = self.battery_energy_rated * self.max_soc - \
-                         prebvious_outputs_copy['Spinning Reserve (Charging) (kW)'] * self.round_trip_efficiency
+                         previous_outputs_copy['Spinning Reserve (Charging) (kW)'] * self.round_trip_efficiency
 
             # Update constraints in the output
             SR_contraint_output.loc[self.window_index, "Power Min (kW)"] = charging_min.loc[self.window_index]
@@ -272,10 +274,10 @@ class ConstraintObject:
             SR_contraint_output.loc[self.window_index, "Energy Min (kWh)"] = energy_min.loc[self.window_index]
             SR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = energy_max.loc[self.window_index]
 
-            # Calculate NSR values
-            previous_outputs_values = prebvious_outputs_copy["SR Price Signal ($/kW)"] * \
-                                      (prebvious_outputs_copy['Spinning Reserve (Discharging) (kW)'] +
-                                       prebvious_outputs_copy['Spinning Reserve (Charging) (kW)'])
+            # Calculate SR values
+            previous_outputs_values = previous_outputs_copy["SR Price Signal ($/kW)"] * \
+                                      (previous_outputs_copy['Spinning Reserve (Discharging) (kW)'] +
+                                       previous_outputs_copy['Spinning Reserve (Charging) (kW)'])
             SR_values = sum(previous_outputs_values[self.window_index])
 
         else:
@@ -380,20 +382,13 @@ class ConstraintObject:
       according to the logic of the regScenario """
         # Create user constraints based on resource hours and regulation scenario
         new_hourly_timeseries = self.previous_initial_hourly_timeseries.copy(deep=True)
-        new_hourly_timeseries.set_index(self.previous_initial_hourly_timeseries.index)
-
-        new_hourly_timeseries['Power Min (kW)'] = - self.battery_charging_power_max  # TODO: why?
-        new_hourly_timeseries['Power Max (kW)'] = self.battery_charging_power_max  # TODO: why?
-        new_hourly_timeseries['Energy Max (kWh)'] = self.battery_energy_rated * \
-                                                    self.max_soc  # TODO: previous way has double counted max_soc
-        new_hourly_timeseries['Energy Min (kWh)'] = self.battery_energy_rated * self.min_soc
 
         # Create user constraints based on resource hours and regulation scenario
         if self.regulation_scenario == 1:  # ENERGY reservations based on resource hours & service prices
             # SOC must be sufficient at beginning of each RA period
             new_hourly_timeseries.loc[self.window_start_index,
                                       'Energy Min (kWh)'] = self.battery_discharging_power_max * self.RA_length
-            # Set prices of other services as 0 during this window
+            # Set prices of other services as 0 during this window, except for energy arbitrage
             incompatible_services = ['FR Price ($/kW)', 'Reg Up Price ($/kW)', 'Reg Down Price ($/kW)',
                                      'NSR Price ($/kW)', 'SR Price ($/kW)']
             for service in incompatible_services:
