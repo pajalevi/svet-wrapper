@@ -1,9 +1,3 @@
-# import importlib.util
-# spec = importlib.util.spec_from_file_location("SvetObject","/Applications/storagevet2v101/svet-wrapper/vc_wrap.py")
-# foo = importlib.util.module_from_spec(spec)
-# spec.loader.exec_module(foo)
-# foo
-
 from vc_wrap import SvetObject
 from combine_runs import ConstraintObject
 
