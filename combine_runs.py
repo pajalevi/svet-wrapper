@@ -151,8 +151,12 @@ class ConstraintObject:
         self.window_index = (self.previous_initial_hourly_timeseries.index.hour >= app_hours[0] + 1) & \
                             (self.previous_initial_hourly_timeseries.index.hour <= app_hours[1] + 1)
         self.window_end_index = self.previous_initial_hourly_timeseries.index.hour == app_hours[1] + 1
-        self.non_window_index = (self.previous_initial_hourly_timeseries.index.hour < app_hours[0] + 1) | \
-                                (self.previous_initial_hourly_timeseries.index.hour > app_hours[1] + 1)
+        if app_hours[1] == 23:
+            self.window_index = self.window_index + \
+                                (self.previous_initial_hourly_timeseries.index.hour == 0)
+            self.window_end_index = self.previous_initial_hourly_timeseries.index.hour == 0
+        else:
+            pass
 
         # Initialize user constraint values
         self.new_shortname = str()
@@ -338,6 +342,14 @@ class ConstraintObject:
             energy_max.loc[sel2] = energy_max.loc[sel2] + 1
             sel3 = energy_max - energy_min < 1e-4  # somehow they're still equal
             energy_min.loc[sel3] = energy_min.loc[sel3] - 1
+
+            # avoid infeasibility for power
+            sel = (charging_min + charging_max) >= self.battery_charging_power_max * 2  # both at max
+            charging_min.loc[sel] = charging_min.loc[sel] - 1
+            sel2 = (charging_min + charging_max) <= self.battery_charging_power_max * -2  # both at min
+            charging_max.loc[sel2] = charging_max.loc[sel2] + 1
+            sel3 = charging_max - charging_min < 1e-4  # somehow they're still equal
+            charging_min.loc[sel3] = charging_min.loc[sel3] - 1
 
             # Update constraints in the output
             FR_contraint_output.loc[self.window_index, "Power Min (kW)"] = charging_min.loc[self.window_index]

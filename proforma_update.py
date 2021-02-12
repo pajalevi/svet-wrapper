@@ -14,6 +14,7 @@ def update_financial_results(proforma_old, npv_old, discount_rate=0.1, growth_ra
         proforma_csv["User Constraints Value"] = proforma_csv['project_year']. \
             apply(lambda i: max(proforma_csv["User Constraints Value"]) * (1 + growth_rate) ** (i - 1))
         proforma_csv["User Constraints Value"][0] = 0
+        proforma_csv["Yearly Net Value"] = proforma_csv.iloc[:, 1:-2].sum(axis=1)
 
     # Calculate NPV for each column
     npv_csv = npv_old.copy(deep=True)
