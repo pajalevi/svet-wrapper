@@ -5,7 +5,7 @@ This function generates the inputs for a run that combines
 constraints from multiple runs according to the given inputs.
 It then runs StorageVET.
 
-Zhenhua Zhang Jan 27 2021, last updated on Feb 4 2021
+Zhenhua Zhang Jan 27 2021, last updated on Feb 19 2021
 """
 
 import pandas as pd
@@ -194,18 +194,18 @@ class ConstraintObject:
             previous_outputs_copy.loc[sel, 'Non-spinning Reserve (Discharging) (kW)'] = \
                 previous_outputs_copy.loc[sel, 'Non-spinning Reserve (Discharging) (kW)'] - 1
 
-            charging_min = - 1 * (self.battery_discharging_power_max -
-                                  previous_outputs_copy['Non-spinning Reserve (Discharging) (kW)'])
-            charging_max = self.battery_charging_power_max - \
-                           previous_outputs_copy['Non-spinning Reserve (Charging) (kW)']
+            power_min = - 1 * (self.battery_discharging_power_max -
+                               previous_outputs_copy['Non-spinning Reserve (Discharging) (kW)'])
+            power_max = self.battery_charging_power_max - \
+                        previous_outputs_copy['Non-spinning Reserve (Charging) (kW)']
             energy_min = self.battery_energy_rated * self.min_soc + \
                          previous_outputs_copy['Non-spinning Reserve (Discharging) (kW)']
             energy_max = self.battery_energy_rated * self.max_soc - \
                          previous_outputs_copy['Non-spinning Reserve (Charging) (kW)'] * self.round_trip_efficiency
 
             # Update constraints in the output
-            NSR_contraint_output.loc[self.window_index, "Power Min (kW)"] = charging_min.loc[self.window_index]
-            NSR_contraint_output.loc[self.window_index, "Power Max (kW)"] = charging_max.loc[self.window_index]
+            NSR_contraint_output.loc[self.window_index, "Power Min (kW)"] = power_min.loc[self.window_index]
+            NSR_contraint_output.loc[self.window_index, "Power Max (kW)"] = power_max.loc[self.window_index]
             NSR_contraint_output.loc[self.window_index, "Energy Min (kWh)"] = energy_min.loc[self.window_index]
             NSR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = energy_max.loc[self.window_index]
 
@@ -266,18 +266,18 @@ class ConstraintObject:
             previous_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] = \
                 previous_outputs_copy.loc[sel, 'Spinning Reserve (Discharging) (kW)'] - 1
 
-            charging_min = SR_contraint_output["Power Min (kW)"]
-            charging_max = self.battery_charging_power_max - \
-                           previous_outputs_copy['Spinning Reserve (Charging) (kW)'] - \
-                           previous_outputs_copy['Spinning Reserve (Discharging) (kW)']
+            power_min = SR_contraint_output["Power Min (kW)"]
+            power_max = self.battery_charging_power_max - \
+                        previous_outputs_copy['Spinning Reserve (Charging) (kW)'] - \
+                        previous_outputs_copy['Spinning Reserve (Discharging) (kW)']
             energy_min = self.battery_energy_rated * self.min_soc + \
                          previous_outputs_copy['Spinning Reserve (Discharging) (kW)']
             energy_max = self.battery_energy_rated * self.max_soc - \
                          previous_outputs_copy['Spinning Reserve (Charging) (kW)'] * self.round_trip_efficiency
 
             # Update constraints in the output
-            SR_contraint_output.loc[self.window_index, "Power Min (kW)"] = charging_min.loc[self.window_index]
-            SR_contraint_output.loc[self.window_index, "Power Max (kW)"] = charging_max.loc[self.window_index]
+            SR_contraint_output.loc[self.window_index, "Power Min (kW)"] = power_min.loc[self.window_index]
+            SR_contraint_output.loc[self.window_index, "Power Max (kW)"] = power_max.loc[self.window_index]
             SR_contraint_output.loc[self.window_index, "Energy Min (kWh)"] = energy_min.loc[self.window_index]
             SR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = energy_max.loc[self.window_index]
 
@@ -322,34 +322,34 @@ class ConstraintObject:
         elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
             # RegUP is provided by charging less / discharging more:
             # Power levels must be high enough that they can be reduced for FR call
-            charging_min = - 1 * (self.battery_discharging_power_max -
-                                  self.previous_outputs[
-                                      'Regulation Up (Discharging) (kW)'] -  # save this portion of discharging
-                                  self.previous_outputs['Regulation Up (Charging) (kW)'])  # charge less
+            power_min = - 1 * (self.battery_discharging_power_max -
+                               self.previous_outputs[
+                                   'Regulation Up (Discharging) (kW)'] -  # save this portion of discharging
+                               self.previous_outputs['Regulation Up (Charging) (kW)'])  # charge less
             # RegDOWN is provided by charging more / discharging less:
             # Power levels must be low enough that they can be reduced for FR call
-            charging_max = self.battery_charging_power_max - \
-                           self.previous_outputs['Regulation Down (Charging) (kW)'] - \
-                           self.previous_outputs['Regulation Down (Discharging) (kW)']
+            power_max = self.battery_charging_power_max - \
+                        self.previous_outputs['Regulation Down (Charging) (kW)'] - \
+                        self.previous_outputs['Regulation Down (Discharging) (kW)']
             # Energy throughput is given - must have space for net (less constraint)
             energy_max = self.battery_energy_rated * self.max_soc + \
                          self.previous_outputs['FR Energy Throughput (kWh)'] - \
-                         charging_min * self.round_trip_efficiency
+                         power_min * self.round_trip_efficiency
             energy_min = self.battery_energy_rated * self.min_soc + \
                          self.previous_outputs['FR Energy Throughput (kWh)'] - \
-                         charging_max
+                         power_max
 
             # avoid infeasibility for power
-            sel = (charging_min + charging_max) >= self.battery_charging_power_max * 2  # both at max
-            charging_min.loc[sel] = charging_min.loc[sel] - 1
-            sel2 = (charging_min + charging_max) <= self.battery_charging_power_max * -2  # both at min
-            charging_max.loc[sel2] = charging_max.loc[sel2] + 1
-            sel3 = charging_max - charging_min < 1e-4  # somehow they're still equal
-            charging_min.loc[sel3] = charging_min.loc[sel3] - 1
+            sel = (power_min + power_max) >= self.battery_charging_power_max * 2  # both at max
+            power_min.loc[sel] = power_min.loc[sel] - 1
+            sel2 = (power_min + power_max) <= self.battery_charging_power_max * -2  # both at min
+            power_max.loc[sel2] = power_max.loc[sel2] + 1
+            sel3 = power_max - power_min < 1e-4  # somehow they're still equal
+            power_min.loc[sel3] = power_min.loc[sel3] - 1
 
             # Update constraints in the output
-            FR_contraint_output.loc[self.window_index, "Power Min (kW)"] = charging_min.loc[self.window_index]
-            FR_contraint_output.loc[self.window_index, "Power Max (kW)"] = charging_max.loc[self.window_index]
+            FR_contraint_output.loc[self.window_index, "Power Min (kW)"] = power_min.loc[self.window_index]
+            FR_contraint_output.loc[self.window_index, "Power Max (kW)"] = power_max.loc[self.window_index]
             FR_contraint_output.loc[self.window_index, "Energy Min (kWh)"] = energy_min.loc[self.window_index]
             FR_contraint_output.loc[self.window_index, "Energy Max (kWh)"] = energy_max.loc[self.window_index]
 
@@ -442,10 +442,10 @@ class ConstraintObject:
                 'Net Load (kW)'].transform('max')
 
             # Battery power plus load should not exceed previously dispatched monthly peak
-            charging_min = self.previous_outputs['Load (kW)'] - monthly_max
+            power_min = self.previous_outputs['Load (kW)'] - monthly_max
 
             # Update constraints in the output
-            DCM_contraint_output.loc[self.window_index, "Power Min (kW)"] = charging_min.loc[self.window_index]
+            DCM_contraint_output.loc[self.window_index, "Power Min (kW)"] = power_min.loc[self.window_index]
 
             # Calculate DCM values
             # DCM_values = self.previous_proforma['Avoided Demand Charge'][1]

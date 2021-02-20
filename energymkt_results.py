@@ -83,7 +83,7 @@ FRonly.run_storagevet()
 # FR Priority constraints
 FRconstraint = ConstraintObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
                                 shortname=FRonly.shortname, baseline_runID=FRonly.runID,
-                                app_hours=[21, 23],
+                                app_hours=[0, 23],
                                 regulation_scenario=3,
                                 constraint_init=True)
 FRconstraint.set_FR_user_constraints()
