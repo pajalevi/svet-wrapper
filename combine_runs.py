@@ -438,11 +438,15 @@ class ConstraintObject:
             raise ValueError("regulation_scenario 2 doesn't exist yet for DCM")
         elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
             # Find monthly maximum
-            monthly_max = self.previous_outputs.groupby('Demand Charge Billing Periods')[
+            previous_outputs_copy = self.previous_outputs
+            previous_outputs_copy['Month'] = pd.to_datetime(previous_outputs_copy.iloc[:, 0]).dt.month
+            monthly_max = previous_outputs_copy.groupby(['Month', 'Demand Charge Billing Periods'])[
                 'Net Load (kW)'].transform('max')
+            # Add 1 to avoid infeasibility
+            previous_outputs_copy['monthly_max'] = monthly_max + 1
 
             # Battery power plus load should not exceed previously dispatched monthly peak
-            power_min = self.previous_outputs['Load (kW)'] - monthly_max
+            power_min = self.previous_outputs['Load (kW)'] - previous_outputs_copy['monthly_max']
 
             # Update constraints in the output
             DCM_contraint_output.loc[self.window_index, "Power Min (kW)"] = power_min.loc[self.window_index]
