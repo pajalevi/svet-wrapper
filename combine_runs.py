@@ -385,7 +385,7 @@ class ConstraintObject:
         self.new_hourly_timeseries_path = new_hourly_timeseries_path
         self.values = FR_values
 
-    def set_RA0_user_constraints(self, RA_monthly_values_per_kW=5):
+    def set_RA0_user_constraints(self, RA_monthly_values_per_kW=5): # TODO: read RA monthly values from data file
         """create user constraints for RA dispmode 0 within window defined by resHour
       according to the logic of the regScenario """
         # Create user constraints based on resource hours and regulation scenario
@@ -405,8 +405,19 @@ class ConstraintObject:
             # SOC must be sufficient at beginning of each RA period
             new_hourly_timeseries.loc[self.window_start_index, 'Energy Min (kWh)'] = \
                 self.battery_discharging_power_max * self.RA_length
-        elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
-            raise ValueError("regulation_scenario 3 doesn't exist yet for RA")  # TODO
+        elif self.regulation_scenario == 3:  # ENERGY Reservations based on PREVIOUS DISPATCH
+            # Identify previous periods of RA
+            ra_start_index = self.previous_outputs.loc[:,'RA Energy Min (kWh)'] > 0
+            ra_period_index = self.previous_outputs.loc[:, 'RA Event (y/n)']
+            new_hourly_timeseries.loc[ra_start_index.values, 'Energy Min (kWh)'] = \
+                self.battery_discharging_power_max * self.RA_length
+
+            # Set prices of other services as 0 during this window, except for energy arbitrage
+            incompatible_services = ['FR Price ($/kW)', 'Reg Up Price ($/kW)', 'Reg Down Price ($/kW)',
+                                     'NSR Price ($/kW)', 'SR Price ($/kW)']
+            for service in incompatible_services:
+                new_hourly_timeseries.loc[ra_period_index.values, service] = 0
+            # raise ValueError("regulation_scenario 3 doesn't exist yet for RA")  # TODO
         else:
             raise ValueError("regulation_scenario must be 1, 2 or 3")
 

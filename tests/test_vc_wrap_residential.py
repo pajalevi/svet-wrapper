@@ -5,7 +5,7 @@ from combine_runs import ConstraintObject
 # TODO: change the default params file (and update tariff name)
 # Note: DA should be turned off due to double counting of enegry arbitrage
 DCM_baseline = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
-                          default_params_file="Model_Parameters_2v1-0-2_default_EA.csv",
+                          #default_params_file="Model_Parameters_2v1-0-2_default_EA.csv",
                           shortname="EA+DCM on",
                           description="test run",
                           Scenario_n="month",
@@ -13,7 +13,8 @@ DCM_baseline = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/Stor
                           DCM_active='yes',
                           retailTimeShift_active='yes',
                           DA_active='no',
-                          SR_active='no'
+                          SR_active='no',
+                          Finance_customer_tariff_filename='/Applications/storagevet2v101/StorageVET-master-git/Data/tariff_pge_b20_simp.csv'
                           )
 DCM_baseline.run_storagevet()
 
@@ -27,7 +28,7 @@ DCMconstraint.set_DCM_user_constraints()
 
 # DCM priority run based on baseline
 DCMpriority = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
-                         default_params_file="Model_Parameters_2v1-0-2_default_EA.csv",
+                         #default_params_file="Model_Parameters_2v1-0-2_default_EA.csv",
                          shortname=DCMconstraint.new_shortname,
                          description="DCM priority run using retail rates",
                          Scenario_n="month",
@@ -39,16 +40,32 @@ DCMpriority = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/Stora
                          FR_active="no", FR_CombinedMarket="0")
 DCMpriority.run_storagevet()
 
+# same but run sub monthly, FR available
+DCMpriority = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
+                         #default_params_file="Model_Parameters_2v1-0-2_default_EA.csv",
+                         shortname=DCMconstraint.new_shortname,
+                         description="DCM priority run using retail rates",
+                         #Scenario_n="month",
+                         Scenario_time_series_filename=DCMconstraint.new_hourly_timeseries_path,
+                         User_active="yes", User_price=DCMconstraint.values,
+                         DCM_active='no',
+                         retailTimeShift_active='yes',
+                         SR_active='yes', NSR_active='yes', DA_active='no', RA_active='no',
+                         FR_active="yes", FR_CombinedMarket="0")
+DCMpriority.run_storagevet()
+
 # DCM only sanity check
 DCMsanity = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
-                       default_params_file="Model_Parameters_2v1-0-2_default_EA.csv",
+                      # default_params_file="Model_Parameters_2v1-0-2_default_EA.csv",
                        shortname=DCMconstraint.new_shortname + "_DCMonly",
                        description="DCM only only sanity check with user constraints",
-                       Scenario_n="month",
+                       #Scenario_n="month",
                        Scenario_time_series_filename=DCMconstraint.new_hourly_timeseries_path,
                        User_active="yes", User_price=DCMconstraint.values,
                        DCM_active='no',
                        retailTimeShift_active='yes',
                        DA_active='no',
-                       SR_active='no')
+                       SR_active='no',
+                       Finance_customer_tariff_filename='/Applications/storagevet2v101/StorageVET-master-git/Data/tariff_pge_b20_simp.csv'
+                       )
 DCMsanity.run_storagevet()

@@ -18,6 +18,9 @@ import subprocess
 import datetime
 import shutil
 
+from proforma_update import update_financial_results
+
+pd.options.mode.chained_assignment = None
 
 
 class SvetObject:
