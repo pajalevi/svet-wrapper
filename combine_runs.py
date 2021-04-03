@@ -432,8 +432,31 @@ class ConstraintObject:
         DCM_contraint_output = self.previous_initial_hourly_timeseries.copy(deep=True).reset_index(drop=True)
 
         # Create user constraints based on resource hours and regulation scenario
-        if self.regulation_scenario == 1:  # ENERGY reservations based on resource hours & service prices
-            raise ValueError("regulation_scenario 1 doesn't exist yet for DCM")
+        if self.regulation_scenario == 1:  # Reservations based on increasing daily demands for each month
+            # Find daily maximum
+            previous_outputs_copy = self.previous_outputs
+            previous_outputs_copy['Month'] = pd.to_datetime(previous_outputs_copy.iloc[:, 0]).dt.month
+            previous_outputs_copy['Date'] = pd.to_datetime(previous_outputs_copy.iloc[:, 0]).dt.date
+
+            rolling_peak = previous_outputs_copy.groupby(['Date', 'Month'])['Net Load (kW)'].max().reset_index()
+            rolling_peak["Net Load (kW) updated"] = rolling_peak.\
+                apply(lambda x: rolling_peak[(rolling_peak["Month"] == x["Month"]) &
+                                             (rolling_peak["Date"] <= x["Date"])]["Net Load (kW)"].max(), axis=1)
+            daily_max = previous_outputs_copy['Date'].map(rolling_peak.set_index('Date')["Net Load (kW) updated"])
+            # Add 1 to avoid infeasibility
+            previous_outputs_copy['daily_max'] = daily_max + 1
+
+            # Battery power plus load should not exceed previously dispatched daily peak
+            power_min = self.previous_outputs['Load (kW)'] - previous_outputs_copy['daily_max']
+
+            # Update constraints in the output
+            DCM_contraint_output.loc[self.window_index, "Power Min (kW)"] = power_min.loc[self.window_index]
+
+            # Calculate DCM values
+            # DCM_values = self.previous_proforma['Avoided Demand Charge'][1]
+
+            # Change DCM savings to 0 bc it will show up anyway if included in tariff
+            DCM_values = 0
         elif self.regulation_scenario == 2:  # ONE-SIDED reservations based on resource hours
             raise ValueError("regulation_scenario 2 doesn't exist yet for DCM")
         elif self.regulation_scenario == 3:  # Reservations based on PREVIOUS DISPATCH
