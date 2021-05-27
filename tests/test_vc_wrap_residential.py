@@ -69,3 +69,17 @@ DCMsanity = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/Storage
                        Finance_customer_tariff_filename='/Applications/storagevet2v101/StorageVET-master-git/Data/tariff_pge_b20_simp.csv'
                        )
 DCMsanity.run_storagevet()
+
+# DCM only sanity check w/double counting
+DCMdouble = SvetObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
+                       default_params_file="Model_Parameters_2v1-0-2_default_EA.csv",
+                       shortname=DCMconstraint.new_shortname + "_DCMonly",
+                       description="DCM only only sanity check with user constraints",
+                       Scenario_n="month",
+                       Scenario_time_series_filename=DCMconstraint.new_hourly_timeseries_path,
+                       User_active="yes", User_price=DCMconstraint.values,
+                       DCM_active='no',
+                       retailTimeShift_active='yes',
+                       DA_active='yes',
+                       SR_active='no')
+DCMdouble.run_storagevet()
