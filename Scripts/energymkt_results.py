@@ -107,9 +107,103 @@ FRsanity = SvetObject(SVet_absolute_path=path,
 FRsanity.run_storagevet()
 
 ############### Demand Charge Management ##############
+path = "/Applications/storagevet2v101/StorageVET-master-git/storagevet_dervet/"
+
 # DCM only
+DCMonly = SvetObject(SVet_absolute_path=path,
+                    shortname="DCM only",
+                    description="DCM only run, baseline for DCM priority. optimistic baseline. dervet",
+                    Scenario_time_series_filename=ts,
+                    Scenario_n="48", Scenario_end_year="2034",
+                    Battery_ccost_kw="0", Battery_ccost_kwh="400",
+                    Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                    Battery_hp="0", Battery_daily_cycle_limit="0",
+                    DCM_active="yes",
+                    RA_active="no")
+DCMonly.run_storagevet()
+
+# DCM with DR
+DCM_DR = SvetObject(SVet_absolute_path=path,
+                    Scenario_time_series_filename=ts,
+                    Scenario_n="48", Scenario_end_year="2034",
+                    Battery_ccost_kw="0", Battery_ccost_kwh="400",
+                    Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                    Battery_hp="0", Battery_daily_cycle_limit="0",
+                    shortname="DCM_w_DR",
+                    description="DCM with DR. optimistic baseline. dervet",
+                    DCM_active="yes",
+                    DR_active="yes",
+                    RA_active="no")
+DCM_DR.run_storagevet() #doesnt appear to work
+
+# DCM with FR
+DCM_FR = SvetObject(SVet_absolute_path=path,
+                     Scenario_time_series_filename=ts,
+                     Scenario_n="48", Scenario_end_year="2034",
+                     Battery_ccost_kw="0", Battery_ccost_kwh="400",
+                     Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                     Battery_hp="0", Battery_daily_cycle_limit="0",
+                     shortname="DCM_w_FR",
+                     description="DCM with FR. optimistic baseline. dervet",
+                     DCM_active="yes", FR_active="yes",FR_CombinedMarket="0")
+DCM_FR.run_storagevet()
+
+# DCM with SR, NSR
+DCM_SR = SvetObject(SVet_absolute_path=path,
+                     Scenario_time_series_filename=ts,
+                     Scenario_n="48", Scenario_end_year="2034",
+                     Battery_ccost_kw="0", Battery_ccost_kwh="400",
+                     Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                     Battery_hp="0", Battery_daily_cycle_limit="0",
+                     shortname="DCM_w_SR_NSR",
+                     description="DCM with SR and NSR. optimistic baseline. dervet",
+                     DCM_active="yes", SR_active="yes",NSR_active="yes")
+DCM_SR.run_storagevet()
+
+# DCM with wholesale, no FR
+DCM_wholesale = SvetObject(SVet_absolute_path=path,
+                           Scenario_time_series_filename=ts,
+                           Scenario_n="48", Scenario_end_year="2034",
+                           Battery_ccost_kw="0", Battery_ccost_kwh="400",
+                           Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                           Battery_hp="0", Battery_daily_cycle_limit="0",
+                           shortname="DCM_w_wholesale",
+                           description="DCM with full wholesale. optimistic baseline. dervet",
+                           DCM_active="yes",
+                           # FR_active="yes", FR_CombinedMarket="0",
+                           RA_active="yes", SR_active="yes", NSR_active="yes")
+DCM_wholesale.run_storagevet()
+
+# DCM with wholesale
+DCM_wholesale = SvetObject(SVet_absolute_path=path,
+                     Scenario_time_series_filename=ts,
+                     Scenario_n="48", Scenario_end_year="2034",
+                     Battery_ccost_kw="0", Battery_ccost_kwh="400",
+                     Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                     Battery_hp="0", Battery_daily_cycle_limit="0",
+                     shortname="DCM_w_wholesale",
+                     description="DCM with full wholesale. optimistic baseline. dervet",
+                     DCM_active="yes", FR_active="yes",FR_CombinedMarket="0",
+                     RA_active="yes",SR_active="yes",NSR_active="yes")
+DCM_wholesale.run_storagevet()
 
 # DCM Priority constraints
+DCMconstraint = ConstraintObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
+                                 shortname=DCMonly.shortname, baseline_runID=DCMonly.runID,
+                                 app_hours=[0, 23],
+                                 regulation_scenario=3,
+                                 constraint_init=True)
+DCMconstraint.set_DCM_user_constraints()
+DCMpriority = SvetObject(SVet_absolute_path=path,
+                         shortname=DCMconstraint.new_shortname,
+                         description="DCM Priority with wholesale. dervet",
+                         Scenario_time_series_filename=DCMconstraint.new_hourly_timeseries_path,
+                         User_active="yes", User_price=DCMconstraint.values,
+                         FR_active="yes", RA_active="yes",
+                         DCM_active="no",FR_combinedMarket="0",SR_active="yes",
+                         NSR_active="yes")
+DCMpriority.run_storagevet()
+
 
 # DCM only sanity check
 
@@ -118,40 +212,90 @@ FRsanity.run_storagevet()
 # iterate over RA_days_peryr
 # RA_days_range = [10,20,30,40]
 RA_days_range = [0,10,20,30,40,60,80,100,150,200,250,300,350,365]
-for RA_days_peryr in RA_days_range:
-    RAbaseline = SvetObject(SVet_absolute_path=path,
-                            shortname="RA_baseline_"+str(RA_days_peryr)+"days",
-                            description="RA dispmode0 baseline with " + str(RA_days_peryr) + "days per yr. 1 cycle per day",
-                            Scenario_time_series_filename=ts,
-                            DA_active='yes', RA_active='yes', RA_dispmode='0',
-                            RA_days=RA_days_peryr,
-                            Scenario_n="48", Scenario_end_year="2034",
-                            Battery_ccost_kw="0", Battery_ccost_kwh="400",
-                            Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
-                            Battery_hp="0"#, Battery_daily_cycle_limit="1"
-                            )
-    RAbaseline.run_storagevet()
+isos = ["caiso","pjm","ercot","isone","nyiso"]
+for iso in isos:
+    ts = "/Applications/storagevet2v101/StorageVET-master-git/Data/hourly_timeseries_"+ iso + "_2019.csv"
+    for RA_days_peryr in RA_days_range:
+        RAbaseline = SvetObject(SVet_absolute_path=path,
+                                shortname="RA_baseline_"+str(RA_days_peryr)+"days_pjm",
+                                description="RA dispmode0 baseline with " + str(RA_days_peryr) + "days per yr. no cycle limit. " + iso + " data",
+                                Scenario_time_series_filename=ts,
+                                DA_active='yes', RA_active='yes', RA_dispmode='0',
+                                RA_days=RA_days_peryr,
+                                Scenario_n="48", Scenario_end_year="2034",
+                                Battery_ccost_kw="0", Battery_ccost_kwh="400",
+                                Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                                Battery_hp="0", Battery_daily_cycle_limit="0"
+                                )
+        RAbaseline.run_storagevet()
 
-    RAconstraint = ConstraintObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
-                                    shortname=RAbaseline.shortname, baseline_runID=RAbaseline.runID,
-                                    #shortname="RA baseline",baseline_runID="38",
-                                    app_hours=[0, 23],
-                                    regulation_scenario=3,
-                                    constraint_init=True)
-    RAconstraint.set_RA0_user_constraints()
+        RAconstraint = ConstraintObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
+                                        shortname=RAbaseline.shortname, baseline_runID=RAbaseline.runID,
+                                        #shortname="RA baseline",baseline_runID="38",
+                                        app_hours=[0, 23],
+                                        regulation_scenario=3,
+                                        constraint_init=True)
+        RAconstraint.set_RA0_user_constraints()
 
-    RArs3 = SvetObject(SVet_absolute_path=path,
-                       shortname=RAconstraint.new_shortname,
-                       description="RA SOC management and AS restriction on " + str(RA_days_peryr) + " days per year. 1 cycle per day",
-                       Scenario_time_series_filename=RAconstraint.new_hourly_timeseries_path,
-                       User_active="yes", User_price=RAconstraint.values,
-                       RA_active="no", FR_active="yes", SR_Active="yes", NSR_active="yes",
-                       FR_CombinedMarket='0',
-                       Scenario_n="48", Scenario_end_year="2034",
-                       Battery_ccost_kw="0", Battery_ccost_kwh="400",
-                       Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
-                       Battery_hp="0"#, Battery_daily_cycle_limit="1"
-                       )
-    RArs3.run_storagevet()
+        RArs3 = SvetObject(SVet_absolute_path=path,
+                           shortname=RAconstraint.new_shortname,
+                           description="RA SOC management and AS restriction on " + str(RA_days_peryr) + " days per year. no cycle limit. FR combined. "+iso+" data",
+                           Scenario_time_series_filename=RAconstraint.new_hourly_timeseries_path,
+                           User_active="yes", User_price=RAconstraint.values,
+                           RA_active="no", FR_active="yes", SR_Active="yes", NSR_active="yes",
+                           FR_CombinedMarket='1',
+                           Scenario_n="48", Scenario_end_year="2034",
+                           Battery_ccost_kw="0", Battery_ccost_kwh="400",
+                           Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                           Battery_hp="0", Battery_daily_cycle_limit="0"
+                           )
+        RArs3.run_storagevet()
+
+############### Resource Adequacy, Low FR #################
+# iterate over RA_days_peryr
+# RA_days_range = [10,20,30,40]
+RA_days_range = [0,10,50,100,150,200,250,300,350,365]
+isos = ["caiso","ercot","pjm","isone","nyiso"]
+iso_FR = ["0","0","1","1","1",]
+#FR_combined = "1"
+for i in range(len(isos)):
+    iso=isos[i]
+    FR_combined = iso_FR[i]
+    ts = "/Applications/storagevet2v101/StorageVET-master-git/Data/hourly_timeseries_"+ iso + "_0.25_FR-prices.csv"
+    for RA_days_peryr in RA_days_range:
+        RAbaseline = SvetObject(SVet_absolute_path=path,
+                                shortname="RA_baseline_"+str(RA_days_peryr)+"days_"+iso,
+                                description="RA dispmode0 baseline with " + str(RA_days_peryr) + "days per yr. no cycle limit. " + iso + " data",
+                                Scenario_time_series_filename=ts,
+                                DA_active='yes', RA_active='yes', RA_dispmode='0',
+                                RA_days=RA_days_peryr,
+                                Scenario_n="48", Scenario_end_year="2034",
+                                Battery_ccost_kw="0", Battery_ccost_kwh="400",
+                                Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                                Battery_hp="0", Battery_daily_cycle_limit="0"
+                                )
+        RAbaseline.run_storagevet()
+
+        RAconstraint = ConstraintObject(SVet_absolute_path="/Applications/storagevet2v101/StorageVET-master-git/",
+                                        shortname=RAbaseline.shortname, baseline_runID=RAbaseline.runID,
+                                        #shortname="RA baseline",baseline_runID="38",
+                                        app_hours=[0, 23],
+                                        regulation_scenario=3,
+                                        constraint_init=True)
+        RAconstraint.set_RA0_user_constraints()
+
+        RArs3 = SvetObject(SVet_absolute_path=path,
+                           shortname=RAconstraint.new_shortname,
+                           description="RA SOC management and AS restriction on " + str(RA_days_peryr) + " days per year. no cycle limit. FR combined. "+iso+" data",
+                           Scenario_time_series_filename=RAconstraint.new_hourly_timeseries_path,
+                           User_active="yes", User_price=RAconstraint.values,
+                           RA_active="no", FR_active="yes", SR_Active="yes", NSR_active="yes",
+                           FR_CombinedMarket=FR_combined,
+                           Scenario_n="48", Scenario_end_year="2034",
+                           Battery_ccost_kw="0", Battery_ccost_kwh="400",
+                           Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                           Battery_hp="0", Battery_daily_cycle_limit="0"
+                           )
+        RArs3.run_storagevet()
 
 # now do RA events with SOC management x hours in advance of the event
