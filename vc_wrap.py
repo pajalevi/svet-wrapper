@@ -45,6 +45,7 @@ class SvetObject:
         self.new_params = pd.DataFrame()
         self.initial_hourly_timeseries = pd.DataFrame()
         self.discount_rate = float()
+        self.npv_new = dict()
 
     def update_runs_log_csv(self):
         """Creates a new entry in Run Log"""
@@ -179,6 +180,7 @@ class SvetObject:
             proforma_new.to_csv(self.runID_result_folder_path + "/_new_pro_forma_runID" + self.runID + ".csv",
                                 index=False)
             npv_new.to_csv(self.runID_result_folder_path + "/_new_npv_runID" + self.runID + ".csv", index=False)
+            self.npv_new = npv_new
 
         # Save status to runlogs, remove entry and folder in cases of failure
         # if status == "ERROR":
