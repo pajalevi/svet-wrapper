@@ -44,7 +44,8 @@ class SvetObject:
         self.runID_dispatch_timeseries_path = str()
         self.new_params = pd.DataFrame()
         self.initial_hourly_timeseries = pd.DataFrame()
-        # TODO: add npv or payback file path here if needed
+        self.discount_rate = float()
+        self.npv_new = dict()
 
     def update_runs_log_csv(self):
         """Creates a new entry in Run Log"""
@@ -134,6 +135,11 @@ class SvetObject:
         new_params.to_csv(self.runID_param_path, index=False)
         self.new_params = new_params
 
+        # Identify discount rate
+        self.discount_rate = (float(new_params.loc[(new_params.Key == "npv_discount_rate") &
+                                                   (new_params.Tag == "Finance"),
+                                                   'Value'])) / 100
+
     def run_storagevet(self):
         """Runs StorageVET via command line"""
         # Update runs log csv
@@ -169,10 +175,12 @@ class SvetObject:
             proforma_old = pd.read_csv(self.runID_result_folder_path + "/pro_forma_runID" + self.runID + ".csv")
             npv_old = pd.read_csv(self.runID_result_folder_path + "/npv_runID" + self.runID + ".csv")
             proforma_new, npv_new = update_financial_results(proforma_old, npv_old,
-                                                             discount_rate=0.1, growth_rate=0.03)
+                                                             discount_rate=self.discount_rate,
+                                                             growth_rate=0.03)
             proforma_new.to_csv(self.runID_result_folder_path + "/_new_pro_forma_runID" + self.runID + ".csv",
                                 index=False)
             npv_new.to_csv(self.runID_result_folder_path + "/_new_npv_runID" + self.runID + ".csv", index=False)
+            self.npv_new = npv_new
 
         # Save status to runlogs, remove entry and folder in cases of failure
         # if status == "ERROR":
