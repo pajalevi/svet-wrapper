@@ -1,5 +1,6 @@
 from vc_wrap import SvetObject
 from combine_runs import ConstraintObject
+from GSA_runs import iterate_sensitivites
 
 path = "/Applications/storagevet2v101/StorageVET-master-git/"
 ts = "/Applications/storagevet2v101/StorageVET-master-git/Data/hourly_timeseries_2019.csv"
@@ -211,21 +212,27 @@ DCMpriority.run_storagevet()
 ############### Resource Adequacy #################
 # iterate over RA_days_peryr
 # RA_days_range = [10,20,30,40]
-RA_days_range = [0,10,20,30,40,60,80,100,150,200,250,300,350,365]
+RA_days_range = [10,200]
 isos = ["caiso","pjm","ercot","isone","nyiso"]
-for iso in isos:
+iso_FR = ["0","0","1","1","1",]
+senslist_names1 = ["Battery_ccost_kwh","Battery_daily_cycle_limit","Finance_npv_discount_rate","Battery_fixedOM","Scenario_monthly_data_filename"]
+senslist1 = [["400","450"],["1","2"],["0.11","0.08"],["40","80"],["/Applications/storagevet2v101/StorageVET-master-git/Data/Monthly_Data_6-kW_RA.csv","/Applications/storagevet2v101/StorageVET-master-git/Data/Monthly_Data.csv"]]
+path = "/Applications/storagevet2v101/StorageVET-master-git/"
+for i in range(len(isos)):
+    iso=isos[i]
+    FR_combined = iso_FR[i]
     ts = "/Applications/storagevet2v101/StorageVET-master-git/Data/hourly_timeseries_"+ iso + "_2019.csv"
     for RA_days_peryr in RA_days_range:
         RAbaseline = SvetObject(SVet_absolute_path=path,
                                 shortname="RA_baseline_"+str(RA_days_peryr)+"days_pjm",
-                                description="RA dispmode0 baseline with " + str(RA_days_peryr) + "days per yr. no cycle limit. " + iso + " data",
+                                description="RA dispmode0 baseline with " + str(RA_days_peryr) + "days per yr. no cycle limit. " + iso + " data. cycLim of 2",
                                 Scenario_time_series_filename=ts,
                                 DA_active='yes', RA_active='yes', RA_dispmode='0',
                                 RA_days=RA_days_peryr,
                                 Scenario_n="48", Scenario_end_year="2034",
                                 Battery_ccost_kw="0", Battery_ccost_kwh="400",
                                 Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
-                                Battery_hp="0", Battery_daily_cycle_limit="0"
+                                Battery_hp="0", Battery_daily_cycle_limit="2"
                                 )
         RAbaseline.run_storagevet()
 
@@ -239,25 +246,27 @@ for iso in isos:
 
         RArs3 = SvetObject(SVet_absolute_path=path,
                            shortname=RAconstraint.new_shortname,
-                           description="RA SOC management and AS restriction on " + str(RA_days_peryr) + " days per year. no cycle limit. FR combined. "+iso+" data",
+                           description="RA SOC management and AS restriction on " + str(RA_days_peryr) + " days per year. no cycle limit. FR combined. "+iso+" data. cycLim of 2",
                            Scenario_time_series_filename=RAconstraint.new_hourly_timeseries_path,
                            User_active="yes", User_price=RAconstraint.values,
                            RA_active="no", FR_active="yes", SR_Active="yes", NSR_active="yes",
-                           FR_CombinedMarket='1',
+                           FR_CombinedMarket=FR_combined,
                            Scenario_n="48", Scenario_end_year="2034",
                            Battery_ccost_kw="0", Battery_ccost_kwh="400",
                            Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
-                           Battery_hp="0", Battery_daily_cycle_limit="0"
+                           Battery_hp="0", Battery_daily_cycle_limit="2"
                            )
-        RArs3.run_storagevet()
+        iterate_sensitivites(RArs3,senslist_names1,senslist1,"RA_SCOM_"+str(RA_days_peryr)+"days")
 
 ############### Resource Adequacy, Low FR #################
 # iterate over RA_days_peryr
 # RA_days_range = [10,20,30,40]
-RA_days_range = [0,10,50,100,150,200,250,300,350,365]
+RA_days_range = [0,50,100,200,300]
 isos = ["caiso","ercot","pjm","isone","nyiso"]
 iso_FR = ["0","0","1","1","1",]
-#FR_combined = "1"
+senslist_names1 = ["Battery_ccost_kwh","Battery_daily_cycle_limit","Finance_npv_discount_rate","Battery_fixedOM","Scenario_monthly_data_filename", ]
+senslist1 = [["400","450"],["1","2"],["0.11","0.08"],["40","80"],["/Applications/storagevet2v101/StorageVET-master-git/Data/Monthly_Data_6-kW_RA.csv","/Applications/storagevet2v101/StorageVET-master-git/Data/Monthly_Data.csv"]]
+
 for i in range(len(isos)):
     iso=isos[i]
     FR_combined = iso_FR[i]
@@ -296,6 +305,7 @@ for i in range(len(isos)):
                            Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
                            Battery_hp="0", Battery_daily_cycle_limit="0"
                            )
-        RArs3.run_storagevet()
+        #RArs3.run_storagevet()
+        iterate_sensitivites(RArs3,senslist_names1,senslist1,"RA_SCOM_"+str(RA_days_peryr)+"days")
 
 # now do RA events with SOC management x hours in advance of the event

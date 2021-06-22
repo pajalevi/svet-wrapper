@@ -40,7 +40,7 @@ def eval_run_value_kwyr(runID, results_path):
     kwyr_values.to_csv(results_path + output_file + "/_kwyr_values_run" + runID + ".csv")
 
 
-runIDs = range(150,262)
+runIDs = range(263,362)#150,262)
 path = "/Applications/storagevet2v101/StorageVET-master-git/Results/"
 for r in runIDs:
     print("evaluating run " + str(r))
