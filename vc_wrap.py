@@ -18,7 +18,7 @@ import subprocess
 import datetime
 import shutil
 
-from proforma_update import update_financial_results
+from proforma_update import update_financial_results, new_financial_results
 
 pd.options.mode.chained_assignment = None
 
@@ -126,10 +126,11 @@ class SvetObject:
                 new_params.loc[filter_all, 'Value'] = self.argument_list[p]
 
         # Save initial Scenario_time_series_filename into the results folder
-        initial_hourly_timeseries = pd.read_csv(self.argument_list['Scenario_time_series_filename'])
-        initial_hourly_timeseries.to_csv(self.runID_result_folder_path + "/_initial_hourly_timeseries_runID{}.csv"
-                                         .format(self.runID), index=False)
-        self.initial_hourly_timeseries = initial_hourly_timeseries
+        if 'Scenario_time_series_filename' in self.argument_list:
+            initial_hourly_timeseries = pd.read_csv(self.argument_list['Scenario_time_series_filename'])
+            initial_hourly_timeseries.to_csv(self.runID_result_folder_path + "/_initial_hourly_timeseries_runID{}.csv"
+                                             .format(self.runID), index=False)
+            self.initial_hourly_timeseries = initial_hourly_timeseries
 
         # Save new params
         new_params.to_csv(self.runID_param_path, index=False)
@@ -191,4 +192,43 @@ class SvetObject:
         # For now, we can log in status in cases of failure as well
         runs_log = pd.read_csv(self.runs_log_file)
         runs_log.loc[runs_log['runID'] == int(self.runID), ['status']] = status
+        runs_log.to_csv(self.runs_log_file, index=None)
+
+    def new_financial_scenario(self, base_runID, base_shortname, ra_const = True):
+        """re-calculates financial scenario for existing simulation"""
+        # default param folder should be that from runID
+        # identify relevant folder
+        baseline_result_folder_path = self.results_path + "output_run" + str(base_runID) + "_" + base_shortname
+        self.default_params_file = baseline_result_folder_path + "/params_run" + str(base_runID) + ".csv"
+
+        # Update runs log csv
+        self.update_runs_log_csv()
+
+        # Set up param csv, create run folder
+        self.setup_param_csv()
+
+        # Check that result folder exists with param file in it
+        if not (os.path.exists(self.runID_param_path)):
+            raise FileNotFoundError("Params file does not exist. Given path was " + self.runID_param_path)
+
+        # copy other output files from runID into new folder
+        files = os.listdir(baseline_result_folder_path)
+        for fname in files:
+            shutil.copy2(os.path.join(baseline_result_folder_path, fname), self.runID_result_folder_path)
+
+        # update proforma calculations
+        proforma_old = pd.read_csv(self.runID_result_folder_path + "/pro_forma_runID" + str(base_runID) + ".csv")
+        npv_old = pd.read_csv(self.runID_result_folder_path + "/npv_runID" + str(base_runID) + ".csv")
+        proforma_new, npv_new, payback_new = new_financial_results(proforma_old, npv_old, self.runID_param_path, ra_constraint=ra_const)
+        proforma_new.to_csv(self.runID_result_folder_path + "/pro_forma_runID" + str(self.runID) + ".csv",
+                            index=False)
+        npv_new.to_csv(self.runID_result_folder_path + "/npv_runID" + self.runID + ".csv", index=False)
+        payback_new.to_csv(self.runID_result_folder_path + "/payback_runID" + self.runID + ".csv", index=False)
+        # self.npv_new = npv_new
+
+        # Update payback calculation?
+
+        # Save status to runlogs
+        runs_log = pd.read_csv(self.runs_log_file)
+        runs_log.loc[runs_log['runID'] == int(self.runID), ['status']] = "CALCULATED"
         runs_log.to_csv(self.runs_log_file, index=None)

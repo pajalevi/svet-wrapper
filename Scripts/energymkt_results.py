@@ -212,26 +212,29 @@ DCMpriority.run_storagevet()
 ############### Resource Adequacy #################
 # iterate over RA_days_peryr
 # RA_days_range = [10,20,30,40]
-RA_days_range = [10,200]
+RA_days_range = [0,10,200]
 isos = ["caiso","pjm","ercot","isone","nyiso"]
 iso_FR = ["0","0","1","1","1",]
-senslist_names1 = ["Battery_ccost_kwh","Battery_daily_cycle_limit","Finance_npv_discount_rate","Battery_fixedOM","Scenario_monthly_data_filename"]
-senslist1 = [["400","450"],["1","2"],["0.11","0.08"],["40","80"],["/Applications/storagevet2v101/StorageVET-master-git/Data/Monthly_Data_6-kW_RA.csv","/Applications/storagevet2v101/StorageVET-master-git/Data/Monthly_Data.csv"]]
+# senslist_names1 = ["Battery_ccost_kwh","Battery_daily_cycle_limit","Finance_npv_discount_rate","Battery_fixedOM","User_price"]
+# senslist1 = [["400","450"],["0","1","2"],["0.11","0.08"],["40","80"],[str(3*12*2000),str(6*12*2000)]]
+senslist_names1 = ["Battery_daily_cycle_limit"]
+senslist1 = [["0","1","2"]]
+price_filename_ending = ["2019.csv","0.25_FR-prices.csv"]
 path = "/Applications/storagevet2v101/StorageVET-master-git/"
 for i in range(len(isos)):
     iso=isos[i]
     FR_combined = iso_FR[i]
-    ts = "/Applications/storagevet2v101/StorageVET-master-git/Data/hourly_timeseries_"+ iso + "_2019.csv"
+    ts = "/Applications/storagevet2v101/StorageVET-master-git/Data/hourly_timeseries_"+ iso + "_" + price_filename_ending[1]
     for RA_days_peryr in RA_days_range:
         RAbaseline = SvetObject(SVet_absolute_path=path,
-                                shortname="RA_baseline_"+str(RA_days_peryr)+"days_pjm",
+                                shortname="RA_baseline_"+str(RA_days_peryr)+"days_"+iso,
                                 description="RA dispmode0 baseline with " + str(RA_days_peryr) + "days per yr. no cycle limit. " + iso + " data. cycLim of 2",
                                 Scenario_time_series_filename=ts,
                                 DA_active='yes', RA_active='yes', RA_dispmode='0',
                                 RA_days=RA_days_peryr,
                                 Scenario_n="48", Scenario_end_year="2034",
                                 Battery_ccost_kw="0", Battery_ccost_kwh="400",
-                                Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                                Battery_ene_max_rated="8000", Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
                                 Battery_hp="0", Battery_daily_cycle_limit="2"
                                 )
         RAbaseline.run_storagevet()
@@ -242,7 +245,7 @@ for i in range(len(isos)):
                                         app_hours=[0, 23],
                                         regulation_scenario=3,
                                         constraint_init=True)
-        RAconstraint.set_RA0_user_constraints()
+        RAconstraint.set_RA0_user_constraints(RA_monthly_values_per_kW=3) #unfortunately this is hardcoded... but can just set User_price so its not a big deal
 
         RArs3 = SvetObject(SVet_absolute_path=path,
                            shortname=RAconstraint.new_shortname,
@@ -253,7 +256,7 @@ for i in range(len(isos)):
                            FR_CombinedMarket=FR_combined,
                            Scenario_n="48", Scenario_end_year="2034",
                            Battery_ccost_kw="0", Battery_ccost_kwh="400",
-                           Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
+                           Battery_ene_max_rated="8000", Battery_fixedOM="7",  # Battery_incl_cycle_degrade="0",
                            Battery_hp="0", Battery_daily_cycle_limit="2"
                            )
         iterate_sensitivites(RArs3,senslist_names1,senslist1,"RA_SCOM_"+str(RA_days_peryr)+"days")
