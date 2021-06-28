@@ -4,6 +4,7 @@ import copy
 import pandas as pd
 import numpy as np
 import itertools
+import os
 
 def iterate_sensitivites(svet_object,senslist_names, sens_list, name):
     all_runs = list(itertools.product(*sens_list))
@@ -22,10 +23,16 @@ def iterate_sensitivites(svet_object,senslist_names, sens_list, name):
 
 
 def iterate_financial_sensitivites(svet_object,senslist_names, sens_list, runID,
-                                   runlog_path = "/Applications/storagevet2v101/StorageVET-master-git/Results/runsLog.csv"):
-    runslog = pd.read_csv(runlog_path)
+                                   result_folder_path = "/Applications/storagevet2v101/StorageVET-master-git/Results"):
+    runslog = pd.read_csv(result_folder_path + "/runsLog.csv")
     ind= runslog.runID == runID
     run_shortname = runslog.loc[ind,"shortname"].values[0]
+
+    # check that base run completed
+    if not (os.path.exists(result_folder_path+ "/output_run"+ str(runID)+ "_"+ run_shortname+ "/pro_forma_runID"+ str(runID)+ ".csv")):
+        # print(result_folder_path+ "/output_run"+ str(runID)+ "_"+ run_shortname+ "/pro_forma_runID"+ str(runID)+ ".csv")
+        print("base run proforma file does not exist for run " + str(runID) + ". skipping this run.")
+        return
 
     # we don't need financial sensitivities on the baseline runs.
     if np.logical_not('baseline' in run_shortname):

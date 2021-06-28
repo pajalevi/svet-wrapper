@@ -212,9 +212,15 @@ class SvetObject:
             raise FileNotFoundError("Params file does not exist. Given path was " + self.runID_param_path)
 
         # copy other output files from runID into new folder
-        files = os.listdir(baseline_result_folder_path)
-        for fname in files:
-            shutil.copy2(os.path.join(baseline_result_folder_path, fname), self.runID_result_folder_path)
+        # just params
+        # files = os.listdir(baseline_result_folder_path)
+        # for fname in files:
+        #     shutil.copy2(os.path.join(baseline_result_folder_path, fname), self.runID_result_folder_path)
+        shutil.copy(self.default_params_file, self.runID_result_folder_path + "/params_run" + str(base_runID) + ".csv")
+        shutil.copy(baseline_result_folder_path + "/pro_forma_runID" + str(base_runID) + ".csv",
+                    self.runID_result_folder_path + "/pro_forma_runID" + str(base_runID) + ".csv")
+        shutil.copy(baseline_result_folder_path + "/npv_runID" + str(base_runID) + ".csv",
+                    self.runID_result_folder_path + "/npv_runID" + str(base_runID) + ".csv")
 
         # update proforma calculations
         proforma_old = pd.read_csv(self.runID_result_folder_path + "/pro_forma_runID" + str(base_runID) + ".csv")

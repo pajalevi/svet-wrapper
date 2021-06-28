@@ -12,9 +12,9 @@ path = "/Applications/storagevet2v101/StorageVET-master-git/"
 # test_financial.new_financial_scenario(runID,run_shortname)
 
 
-runIDs = range(860,979)
+runIDs = range(862,979)
 senslist_names1 = ["Battery_ccost_kwh","Finance_npv_discount_rate","Battery_fixedOM","User_price", "Scenario_end_year"]
-senslist1 = [["400","450"],["0.14","0.11"],["40","77"],["3","6"],["2034","2039","2029"]] #TODO: make sure first value is default, and have iterate_sensitivities not run the first line
+senslist1 = [["400","450"],["11","8"],["40","77"],["3","6"],["2034","2039"]] #TODO: make sure first value is default, and have iterate_sensitivities not run the first line
 for r in runIDs:
     test_financial = SvetObject(SVet_absolute_path=path,
                                 shortname="fin_sensitivity_on_runID" + str(r), #not used

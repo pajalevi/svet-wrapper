@@ -76,22 +76,24 @@ def new_financial_results(proforma_old, npv_old, params_path, ra_constraint=True
 
     # Check if there is a user constraint column: if so, fix it
     if "User Constraints Value" in proforma_csv.columns:
+        ra_value = float(params.loc[(params['Key'] == "price") &
+                                    (params['Tag'] == "User"), 'Value'].values[0])
         proforma_csv["User Constraints Value"] = proforma_csv['project_year']. \
-            apply(lambda i: max(proforma_csv["User Constraints Value"]) * (1 + growth_rate) ** (i - 1))
+            apply(lambda i: (ra_value * 12 * batt_kw) * (1 + growth_rate) ** (i - 1))
         proforma_csv["User Constraints Value"][0] = 0
-        proforma_csv["Yearly Net Value"] = proforma_csv.iloc[:, 1:-2].sum(axis=1)
+
 
     # change capital cost
     ind1 = proforma_csv.columns.str.contains("Capital Cost")
     ind2 = np.logical_not(proforma_csv.columns.str.contains("Site Load"))
     ind3 = ind1 & ind2
-    proforma_csv.loc[0, ind3] = ccost * batt_kwh
+    proforma_csv.loc[0, ind3] = ccost * batt_kwh * -1
 
     # change om cost
     ind1 = proforma_csv.columns.str.contains("Fixed O&M Cost")
     ind2 = np.logical_not(proforma_csv.columns.str.contains("Site Load"))
     ind3 = ind1 & ind2
-    proforma_csv.loc[1, ind3] = om_cost * batt_kw
+    proforma_csv.loc[1, ind3] = om_cost * batt_kw * -1
 
     # change RA value
     if "Resource AdequacyCapacity Payment" in proforma_csv.columns:
@@ -106,6 +108,9 @@ def new_financial_results(proforma_old, npv_old, params_path, ra_constraint=True
         proforma_csv.loc[1:,c] = proforma_csv.loc[1:,"project_year"]. \
             apply(lambda i: proforma_csv.loc[1, c] * (1 + growth_rate) ** (i - 1))
 
+    # update yearly value column
+    proforma_csv["Yearly Net Value"] = proforma_csv.iloc[:, 1:-2].sum(axis=1)
+
     # Calculate NPV for each column
     npv_csv = npv_old.copy(deep=True)
     npv_values = {}
@@ -116,7 +121,7 @@ def new_financial_results(proforma_old, npv_old, params_path, ra_constraint=True
         else:
             npv_csv["Lifetime Present Value"] = npv_values[col_name]
 
-    # TODO: payback period calculation
+    # Payback period calculations
     cost = proforma_csv.iloc[0,1:-2].sum(axis=0)
     yearly_revenue = proforma_csv.iloc[1,1:-2].sum(axis=0)
     d = {'Payback_Years': [cost/yearly_revenue]}
